@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 
-export default function App() {
+export default function HomePage() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-neutral-950 text-neutral-100">
       <motion.h1
