@@ -1,13 +1,11 @@
 import { motion } from 'motion/react'
 
+import { appear } from '../design/motion.ts'
+
 export default function HomePage() {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-neutral-950 text-neutral-100">
-      <motion.h1
-        className="text-3xl font-semibold tracking-tight"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
+    <main className="flex min-h-dvh items-center justify-center">
+      <motion.h1 className="text-[26px]" {...appear}>
         finchart-notes
       </motion.h1>
     </main>
