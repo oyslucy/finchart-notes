@@ -8,6 +8,7 @@ import { SidebarItem, SidebarSection } from '../components/ui/SidebarItem.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
 import { useSession } from '../features/auth/session.ts'
+import { usernameFromEmail } from '../features/auth/username.ts'
 import { useBoards, useCreateBoard } from '../features/boards/queries.ts'
 import { errorMessage } from '../lib/api.ts'
 import { supabase } from '../lib/supabase.ts'
@@ -20,7 +21,7 @@ export default function AppLayout() {
 
   return (
     <div className="flex min-h-dvh">
-      <Sidebar email={session.session.user.email ?? ''} />
+      <Sidebar username={usernameFromEmail(session.session.user.email)} />
       <main className="min-w-0 flex-1">
         <Outlet />
       </main>
@@ -28,7 +29,7 @@ export default function AppLayout() {
   )
 }
 
-function Sidebar({ email }: { email: string }) {
+function Sidebar({ username }: { username: string }) {
   const { boardId } = useParams()
   const boards = useBoards()
   const [creating, setCreating] = useState(false)
@@ -81,7 +82,7 @@ function Sidebar({ email }: { email: string }) {
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-border px-2 pt-2.5">
-        <span className="truncate text-[12px] text-text-muted">{email}</span>
+        <span className="truncate text-[12px] text-text-muted">{username}</span>
         <IconButton
           icon={LogOut}
           label="로그아웃"
@@ -110,7 +111,11 @@ function NewBoardForm({ onDone }: { onDone: () => void }) {
         void navigate(`/boards/${board.id}`)
       },
       onError: (error) => {
-        toast({ title: '보드를 만들지 못했다', description: errorMessage(error), tone: 'danger' })
+        toast({
+          title: '보드를 만들지 못했습니다',
+          description: errorMessage(error),
+          tone: 'danger',
+        })
       },
     })
   }

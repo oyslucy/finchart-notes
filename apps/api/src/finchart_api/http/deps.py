@@ -43,8 +43,8 @@ async def get_current_user(
         user = user_from_claims(claims, credentials.credentials)
     except TokenError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token") from exc
-    if user.email not in services.settings.allowed_email_set:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "email not allowed")
+    if not services.settings.is_allowed(user.email):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "account not allowed")
     return user
 
 

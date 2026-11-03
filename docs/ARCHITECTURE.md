@@ -6,7 +6,7 @@
 
 ```
 브라우저 (React SPA)
-  │  Supabase Auth (Google / 이메일 매직링크) → access token(JWT)
+  │  Supabase Auth (아이디 + 비밀번호) → access token(JWT)
   │
   │  https://finchart-notes.duckdns.org
   ▼
@@ -32,7 +32,7 @@ Oracle Cloud Always Free VM (VM.Standard.E2.1.Micro, RAM 1 GB)
 
 `POST /api/boards/{board_id}/cards` (multipart `image`)
 
-1. **인증**: `Authorization: Bearer <jwt>`를 Supabase JWKS로 검증한다. 이메일이 `ALLOWED_EMAILS`에 없으면 403.
+1. **인증**: `Authorization: Bearer <jwt>`를 Supabase JWKS로 검증한다. 아이디가 `ALLOWED_USERNAMES`에 없으면(또는 이메일이 `ALLOWED_EMAILS`에 없으면) 403.
 2. **제한**: 사용자별 분당 호출 수(메모리 기반)를 확인한다. 파일은 10 MB 이하, `image/png|jpeg|webp`만 받는다.
 3. **해시 확인**: 원본 바이트의 SHA-256을 계산하고 `(owner_id, image_sha256)`로 기존 카드를 찾는다. 있으면 **분석을 생략**하고 기존 카드를 `duplicate: true`로 반환한다.
 4. **VLM 분석**: `VisionProvider.analyze(image_bytes)` → `ChartAnalysis`(bbox, title, chart_type, period, takeaways, interpretation, caveats). Gemini가 429나 5xx를 반환하면 지수 백오프로 최대 3회 재시도하고, 그래도 실패하면 폴백 모델을 쓴다.
@@ -145,7 +145,9 @@ cards (
 | `GEMINI_FALLBACK_MODEL` | | `gemini-3.1-flash-lite` | 재시도 후 폴백 |
 | `SUPABASE_URL` | O | | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | O | | PostgREST/Storage 호출 시 `apikey` 헤더 (공개 키) |
-| `ALLOWED_EMAILS` | O | | 쉼표로 구분한 허용 이메일 |
+| `ALLOWED_USERNAMES` | O | | 쉼표로 구분한 허용 아이디 |
+| `ALLOWED_EMAILS` | | | 쉼표로 구분한 허용 이메일 (이메일 계정을 쓸 때만) |
+| `USERNAME_EMAIL_DOMAIN` | | `users.finchart-notes.duckdns.org` | 아이디를 Supabase 이메일로 바꿀 때 쓰는 도메인. 웹(`features/auth/username.ts`)과 같아야 한다 |
 | `RATE_LIMIT_PER_MINUTE` | | `10` | 사용자별 분당 카드 생성 수 |
 | `MAX_UPLOAD_BYTES` | | `10485760` | 10 MB |
 | `WEB_DIST_DIR` | | | 웹 빌드 경로 (Docker 이미지에서는 `/app/web`) |
@@ -166,10 +168,14 @@ cards (
 2. 마이그레이션을 적용한다. 둘 중 하나를 쓴다.
    - SQL Editor에 `supabase/migrations/20261103000000_init.sql` 내용을 붙여 넣고 실행한다.
    - Supabase CLI: `supabase link --project-ref <ref>` 다음에 `supabase db push`
-3. Authentication → Providers에서 Google 또는 Email(magic link)을 켠다. URL Configuration에 `http://localhost:5173`과 `https://finchart-notes.duckdns.org`를 추가한다.
+3. Authentication → Sign In / Providers에서 다음과 같이 설정한다.
+   - Allow new users to sign up: 켬
+   - Email provider: 켬
+   - Confirm email: **끔**
+   아이디 로그인은 `<아이디>@users.finchart-notes.duckdns.org` 형태의 가짜 이메일을 쓴다. 확인 메일을 켜 두면 가입하자마자 로그인되지 않고, 보낸 메일이 반송되어 Supabase 메일 발송 평판에도 나쁘다.
 4. 환경변수 파일을 만든다.
    ```bash
-   cp .env.example apps/api/.env                # GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, ALLOWED_EMAILS 채우기
+   cp .env.example apps/api/.env                # GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, ALLOWED_USERNAMES 채우기
    cp apps/web/.env.example apps/web/.env.local # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY 채우기
    ```
 
@@ -213,3 +219,10 @@ cd apps/api && GEMINI_API_KEY=... uv run pytest -m live
 | Supabase Free | Postgres, Storage, Auth | DB 500 MB, Storage 1 GB, 7일 비활성 시 정지 |
 | Gemini API Free | VLM | 모델별 RPD 제한 (AI Studio에서 확인) |
 | GitHub Actions / GHCR | CI, 이미지 저장소 | 공개 repo 무료 |
+
+## 인증 방식
+
+- 아이디(영문 소문자, 숫자, `_`, 3~20자)와 비밀번호(8자 이상)로 가입하고 로그인한다.
+- Supabase의 비밀번호 인증은 이메일을 키로 쓰기 때문에, 아이디를 `<아이디>@users.finchart-notes.duckdns.org`로 바꿔 저장한다. 이 주소로 메일을 보내는 일은 없다.
+- 비밀번호를 잊으면 메일로 재설정할 수 없다. Supabase 대시보드(Authentication → Users)에서 직접 바꾼다.
+- 누구나 가입할 수는 있지만, `ALLOWED_USERNAMES`에 없는 계정은 API에서 403을 받는다.

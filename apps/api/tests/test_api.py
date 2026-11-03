@@ -252,6 +252,25 @@ def test_rate_limit_per_user() -> None:
     assert bob_code == 201
 
 
+def test_username_allow_list() -> None:
+    domain = "users.finchart-notes.duckdns.org"
+    app = create_app(
+        Settings(_env_file=None, allowed_usernames="Lucy"),
+        verifier=HmacVerifier(),
+        user_data=fake_user_data(Store()),
+        provider=FakeProvider(),
+    )
+    client = TestClient(app)
+
+    allowed = client.get("/api/boards", headers=Api.auth((uuid4(), f"lucy@{domain}")))
+    other = client.get("/api/boards", headers=Api.auth((uuid4(), f"mallory@{domain}")))
+    wrong_domain = client.get("/api/boards", headers=Api.auth((uuid4(), "lucy@example.com")))
+
+    assert allowed.status_code == 200
+    assert other.status_code == 403
+    assert wrong_domain.status_code == 403
+
+
 def test_unconfigured_supabase_rejects_tokens_but_health_works() -> None:
     client = TestClient(create_app(Settings(_env_file=None, allowed_emails="alice@example.com")))
 
