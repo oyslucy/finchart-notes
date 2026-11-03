@@ -159,6 +159,47 @@ cards (
 
 배포 빌드에서는 GitHub repo **Variables**(Secrets가 아님)로 넣는다.
 
+## 로컬 실행
+
+### 준비
+1. Supabase 프로젝트를 만든다(무료 플랜).
+2. 마이그레이션을 적용한다. 둘 중 하나를 쓴다.
+   - SQL Editor에 `supabase/migrations/20261103000000_init.sql` 내용을 붙여 넣고 실행한다.
+   - Supabase CLI: `supabase link --project-ref <ref>` 다음에 `supabase db push`
+3. Authentication → Providers에서 Google 또는 Email(magic link)을 켠다. URL Configuration에 `http://localhost:5173`과 `https://finchart-notes.duckdns.org`를 추가한다.
+4. 환경변수 파일을 만든다.
+   ```bash
+   cp .env.example apps/api/.env                # GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, ALLOWED_EMAILS 채우기
+   cp apps/web/.env.example apps/web/.env.local # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY 채우기
+   ```
+
+### 실행
+```bash
+# API (http://127.0.0.1:8000, 문서: /api/docs)
+cd apps/api
+uv sync
+uv run finchart-api
+
+# Web (http://localhost:5173, /api는 8000으로 프록시)
+cd apps/web
+npm install
+npm run dev
+```
+
+### Gemini 없이 개발하기
+`apps/api/.env`에 `LLM_PROVIDER=claude_cli`를 넣으면, 로컬에 설치된 CLI(`-p` 비대화 모드)로 분석한다. `APP_ENV=production`에서는 앱이 시작하지 않으므로 운영 환경에서는 쓸 수 없다.
+
+### 검사 (CI와 동일)
+```bash
+cd apps/api && uv run ruff format --check . && uv run ruff check . && uv run mypy src tests && uv run pytest -q
+cd apps/web && npm run lint && npm run build
+```
+
+실제 Gemini 호출 테스트는 `live` 마커가 붙어 있고, 환경변수가 있을 때만 돈다.
+```bash
+cd apps/api && GEMINI_API_KEY=... uv run pytest -m live
+```
+
 ## 배포
 
 - `main`에 push → `ci.yml`(api: ruff/mypy/pytest, web: eslint/prettier/build) → 이미지를 빌드해 GHCR에 push → compose 파일을 VM으로 복사 → SSH로 `docker compose pull && up -d`
