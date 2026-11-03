@@ -1,0 +1,44 @@
+export interface Board {
+  id: string
+  title: string
+  created_at: string
+}
+
+export interface Card {
+  id: string
+  board_id: string
+  position: number
+  title: string
+  chart_type: string
+  period: string | null
+  takeaways: string[]
+  interpretation: string
+  caveats: string[]
+  user_note: string | null
+  model: string
+  created_at: string
+  image_url: string | null
+  thumb_url: string | null
+}
+
+export interface CardCreateResult {
+  card: Card
+  duplicate: boolean
+}
+
+export type CardPatch = Partial<
+  Pick<Card, 'title' | 'period' | 'takeaways' | 'interpretation' | 'caveats' | 'user_note'>
+>
+
+export const CHART_TYPE_LABEL: Record<string, string> = {
+  line: '선',
+  candlestick: '캔들스틱',
+  bar: '막대',
+  area: '영역',
+  scatter: '산점도',
+  pie: '원',
+  heatmap: '히트맵',
+  table: '표',
+  mixed: '복합',
+  other: '기타',
+}
