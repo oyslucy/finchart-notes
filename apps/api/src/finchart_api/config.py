@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -15,7 +15,14 @@ class Settings(BaseSettings):
     gemini_fallback_model: str | None = "gemini-3.1-flash-lite"
     supabase_url: str = ""
     supabase_anon_key: str = ""
+    allowed_emails: str = ""
+    rate_limit_per_minute: int = 10
+    max_upload_bytes: int = 10 * 1024 * 1024
     web_dist_dir: Path | None = None
+
+    @cached_property
+    def allowed_email_set(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.allowed_emails.split(",") if e.strip())
 
 
 @lru_cache

@@ -47,14 +47,21 @@ class GeminiProvider:
         interactions: _Interactions | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        if interactions is None:
-            from google import genai
-
-            self._client = genai.Client(api_key=api_key)
-            interactions = cast(_Interactions, self._client.aio.interactions)
-        self._interactions: _Interactions = interactions
+        self._api_key = api_key
+        self._interactions: _Interactions | None = interactions
         self._models = [m for m in (model, fallback_model) if m]
         self._sleep = sleep
+
+    def _client(self) -> _Interactions:
+        # Created lazily so the app can boot (e.g. for /api/health) without a key.
+        if self._interactions is None:
+            if not self._api_key:
+                raise VisionProviderError("GEMINI_API_KEY is not configured")
+            from google import genai
+
+            self._genai = genai.Client(api_key=self._api_key)
+            self._interactions = cast(_Interactions, self._genai.aio.interactions)
+        return self._interactions
 
     async def analyze(self, image_bytes: bytes) -> VisionResult:
         body_input = [
@@ -78,7 +85,7 @@ class GeminiProvider:
     ) -> VisionResult:
         for attempt in range(MAX_RETRIES + 1):
             try:
-                response = await self._interactions.create(
+                response = await self._client().create(
                     model=model,
                     input=body_input,
                     response_format={
