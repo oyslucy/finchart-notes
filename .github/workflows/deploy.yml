@@ -17,36 +17,11 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      - name: Check web
-        working-directory: apps/web
-        run: |
-          npm ci --no-audit --no-fund
-          npm run lint
-          npm run build
-
-      - uses: astral-sh/setup-uv@v10.3.3
-
-      - name: Check api
-        working-directory: apps/api
-        run: |
-          uv run ruff format --check .
-          uv run ruff check .
-          uv run mypy src tests
-          uv run pytest -q
+  ci:
+    uses: ./.github/workflows/ci.yml
 
   deploy:
-    needs: check
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
