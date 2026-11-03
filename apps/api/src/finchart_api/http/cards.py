@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from finchart_api.imaging import InvalidImageError, detect_mime
 from finchart_api.llm.base import VisionProviderError
 
 router = APIRouter(tags=["cards"])
+logger = logging.getLogger("uvicorn.error")
 
 ALLOWED_MIME = {"image/png", "image/jpeg", "image/webp"}
 SIGNED_URL_TTL_S = 3600
@@ -54,6 +56,7 @@ async def upload_card(
     except BoardNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "board not found") from exc
     except VisionProviderError as exc:
+        logger.warning("analysis failed for board %s: %r (cause: %r)", board_id, exc, exc.__cause__)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "analysis failed, retry later") from exc
     if result.duplicate:
         response.status_code = status.HTTP_200_OK
