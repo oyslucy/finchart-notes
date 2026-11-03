@@ -35,7 +35,7 @@ jobs:
           npm run lint
           npm run build
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Check api
         working-directory: apps/api
