@@ -56,12 +56,12 @@ export const api = {
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 413) return '이미지가 너무 크다. 10MB 이하로 올려 주세요.'
-    if (error.status === 415) return 'PNG, JPEG, WebP 이미지만 올릴 수 있다.'
-    if (error.status === 429) return '업로드가 너무 잦다. 1분 뒤 다시 시도해 주세요.'
-    if (error.status === 502) return '분석에 실패했다. 잠시 후 다시 시도해 주세요.'
-    if (error.status === 403) return '이 계정은 사용이 허용되지 않았다.'
+    if (error.status === 413) return '이미지가 너무 큽니다. 10MB 이하로 올려 주세요.'
+    if (error.status === 415) return 'PNG, JPEG, WebP 이미지만 올릴 수 있습니다.'
+    if (error.status === 429) return '업로드가 너무 잦습니다. 1분 뒤 다시 시도해 주세요.'
+    if (error.status === 502) return '분석에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+    if (error.status === 403) return '이 계정은 사용이 허용되지 않았습니다.'
     return error.message
   }
-  return '알 수 없는 오류가 발생했다.'
+  return '알 수 없는 오류가 발생했습니다.'
 }

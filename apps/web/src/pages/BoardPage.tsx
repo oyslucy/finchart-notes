@@ -49,7 +49,11 @@ function BoardHeader({ board }: { board: Board }) {
         { id: board.id, title },
         {
           onError: (e) => {
-            toast({ title: '이름을 바꾸지 못했다', description: errorMessage(e), tone: 'danger' })
+            toast({
+              title: '이름을 바꾸지 못했습니다',
+              description: errorMessage(e),
+              tone: 'danger',
+            })
           },
         },
       )
@@ -104,7 +108,7 @@ function BoardHeader({ board }: { board: Board }) {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="보드를 삭제할까요?"
-        description="보드 안의 카드와 이미지가 모두 삭제되며 되돌릴 수 없다."
+        description="보드 안의 카드와 이미지가 모두 삭제되며 되돌릴 수 없습니다."
         footer={
           <>
             <Button
@@ -125,7 +129,7 @@ function BoardHeader({ board }: { board: Board }) {
                   },
                   onError: (e) => {
                     toast({
-                      title: '삭제하지 못했다',
+                      title: '삭제하지 못했습니다',
                       description: errorMessage(e),
                       tone: 'danger',
                     })
@@ -156,7 +160,7 @@ function BoardCards({ boardId }: { boardId: string }) {
         await previous
         try {
           const { duplicate } = await upload.mutateAsync(file)
-          if (duplicate) toast({ title: '이미 올린 이미지라 기존 분석을 불러왔다' })
+          if (duplicate) toast({ title: '이미 올린 이미지라 기존 분석을 불러왔습니다' })
         } catch (error) {
           toast({
             title: `${file.name} 분석 실패`,
@@ -180,7 +184,7 @@ function BoardCards({ boardId }: { boardId: string }) {
     ids.splice(target, 0, moved)
     reorder.mutate(ids, {
       onError: (e) => {
-        toast({ title: '순서를 바꾸지 못했다', description: errorMessage(e), tone: 'danger' })
+        toast({ title: '순서를 바꾸지 못했습니다', description: errorMessage(e), tone: 'danger' })
       },
     })
   }
@@ -191,7 +195,7 @@ function BoardCards({ boardId }: { boardId: string }) {
       {cards.isPending && <ChartCardSkeleton />}
       {cards.isSuccess && cards.data.length === 0 && pending === 0 && (
         <p className="py-16 text-center text-[14px] text-text-muted">
-          아직 카드가 없다. 차트 스크린샷을 올려 보세요.
+          아직 카드가 없습니다. 차트 스크린샷을 올려보세요.
         </p>
       )}
       <div className="flex flex-col gap-6">

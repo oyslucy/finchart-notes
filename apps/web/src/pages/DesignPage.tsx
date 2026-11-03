@@ -68,13 +68,13 @@ const SAMPLE_CARD: ChartCardData = {
   period: '2026.05 ~ 2026.10',
   imageUrl: null,
   takeaways: [
-    '5월 약 2,650에서 10월 약 3,200까지 상승했다.',
-    '7월 말부터 8월 중순까지 약 2,800선까지 조정을 거쳤다.',
-    '9월 이후 양봉 비중이 늘며 상승 기울기가 가팔라졌다.',
+    '5월 약 2,650에서 10월 약 3,200까지 상승했습니다.',
+    '7월 말부터 8월 중순까지 약 2,800선까지 조정을 거쳤습니다.',
+    '9월 이후 양봉 비중이 늘며 상승 기울기가 가팔라졌습니다.',
   ],
   interpretation:
-    '기간 전체로는 우상향 흐름이며, 8월 저점 이후 반등 폭이 앞선 상승 구간보다 크다. 거래량 정보가 없어 상승의 강도를 판단하기는 어렵다.',
-  caveats: ['세로축이 2,600에서 시작해 변동 폭이 커 보일 수 있다.'],
+    '기간 전체로는 우상향 흐름이며, 8월 저점 이후 반등 폭이 앞선 상승 구간보다 큽니다. 거래량 정보가 없어 상승의 강도를 판단하기는 어렵습니다.',
+  caveats: ['세로축이 2,600에서 시작해 변동 폭이 커 보일 수 있습니다.'],
   note: '9월 FOMC 전후 구간 다시 확인',
 }
 
@@ -186,7 +186,7 @@ function ColorSection() {
     <Section
       id="color"
       title="색"
-      lead="따뜻한 중립 회색 10단계와 채도를 낮춘 딥블루 하나. 컴포넌트는 의미 토큰만 참조하고, 다크 모드에서는 의미 토큰이 다른 단계로 다시 연결된다."
+      lead="따뜻한 중립 회색 10단계와 채도를 낮춘 딥블루 하나. 컴포넌트는 의미 토큰만 참조하고, 다크 모드에서는 의미 토큰이 다른 단계로 다시 연결됩니다."
     >
       <div className="grid grid-cols-10 overflow-hidden rounded-md border border-border">
         {GRAYS.map((n) => (
@@ -241,8 +241,8 @@ function TypeSection() {
         </TypeRow>
         <TypeRow spec="15 / 400 · 1.6">
           <p className="max-w-[56ch]">
-            기간 전체로는 우상향 흐름이며, 8월 저점 이후 반등 폭이 앞선 상승 구간보다 크다. 거래량
-            정보가 없어 상승의 강도를 판단하기는 어렵다.
+            기간 전체로는 우상향 흐름이며, 8월 저점 이후 반등 폭이 앞선 상승 구간보다 큽니다. 거래량
+            정보가 없어 상승의 강도를 판단하기는 어렵습니다.
           </p>
         </TypeRow>
         <TypeRow spec="13 / muted">
@@ -276,7 +276,7 @@ function ShapeSection() {
     <Section
       id="shape"
       title="형태"
-      lead="모서리 6/8/10px, 1px 헤어라인, 거의 보이지 않는 그림자. 상자를 겹치지 않고 선과 여백으로 나눈다."
+      lead="모서리 6/8/10px, 1px 헤어라인, 거의 보이지 않는 그림자. 상자를 겹치지 않고 선과 여백으로 나눕니다."
     >
       <div className="grid grid-cols-3 gap-4">
         {(
@@ -370,7 +370,7 @@ function OverlaySection() {
     <Section
       id="overlay"
       title="오버레이"
-      lead="툴팁은 300ms 지연 후 표시된다. 다이얼로그는 포커스를 가두고 Esc로 닫힌다."
+      lead="툴팁은 300ms 지연 후 표시됩니다. 다이얼로그는 포커스를 가두고 Esc로 닫힙니다."
     >
       <Row label="tooltip">
         <Tooltip content="카드 삭제" shortcut="⌫">
@@ -391,7 +391,7 @@ function OverlaySection() {
           open={open}
           onOpenChange={setOpen}
           title="보드를 삭제할까요?"
-          description="카드 12장과 원본 이미지가 함께 삭제되며 되돌릴 수 없다."
+          description="카드 12장과 원본 이미지가 함께 삭제되며 되돌릴 수 없습니다."
           footer={
             <>
               <Button
@@ -427,7 +427,7 @@ function FeedbackSection() {
           size="sm"
           onClick={() => {
             toast({
-              title: '카드를 추가했다',
+              title: '카드를 추가했습니다',
               description: 'KOSPI 일봉 · 캔들스틱',
               tone: 'success',
             })
@@ -439,7 +439,7 @@ function FeedbackSection() {
           size="sm"
           onClick={() => {
             toast({
-              title: '분석에 실패했다',
+              title: '분석에 실패했습니다',
               description: '잠시 후 다시 시도해 주세요.',
               tone: 'danger',
             })
@@ -450,7 +450,7 @@ function FeedbackSection() {
         <Button
           size="sm"
           onClick={() => {
-            toast({ title: '이미 올린 이미지라 기존 분석을 불러왔다' })
+            toast({ title: '이미 올린 이미지라 기존 분석을 불러왔습니다' })
           }}
         >
           중립
@@ -512,7 +512,7 @@ function CardSection() {
     <Section
       id="card"
       title="카드"
-      lead="스크린샷 한 장 = 카드 한 장. 내부는 상자 대신 구분선으로 나눈다."
+      lead="스크린샷 한 장 = 카드 한 장. 내부는 상자 대신 구분선으로 나눕니다."
     >
       <div className="grid grid-cols-2 items-start gap-5">
         <ChartCard

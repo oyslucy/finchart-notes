@@ -83,7 +83,7 @@ export function CardItem({ card, onMove, isFirst, isLast }: CardItemProps) {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="카드를 삭제할까요?"
-        description="잘라 둔 이미지와 해설이 함께 삭제된다."
+        description="잘라 둔 이미지와 해설이 함께 삭제됩니다."
         footer={
           <>
             <Button
@@ -104,7 +104,7 @@ export function CardItem({ card, onMove, isFirst, isLast }: CardItemProps) {
                   },
                   onError: (error) => {
                     toast({
-                      title: '삭제하지 못했다',
+                      title: '삭제하지 못했습니다',
                       description: errorMessage(error),
                       tone: 'danger',
                     })
@@ -165,7 +165,7 @@ function NoteDialog({
                   },
                   onError: (error) => {
                     toast({
-                      title: '저장하지 못했다',
+                      title: '저장하지 못했습니다',
                       description: errorMessage(error),
                       tone: 'danger',
                     })

@@ -16,7 +16,7 @@ export default function BoardsIndexPage() {
   if (boards.isError) {
     return (
       <p className="px-10 pt-10 text-[14px] text-danger">
-        보드를 불러오지 못했다. {boards.error.message}
+        보드를 불러오지 못했습니다. {boards.error.message}
       </p>
     )
   }
@@ -27,7 +27,7 @@ export default function BoardsIndexPage() {
     <div className="mx-auto flex max-w-[480px] flex-col gap-2 px-6 pt-32 text-center">
       <h1 className="text-[20px]">첫 보드를 만들어 보세요</h1>
       <p className="text-[14px] text-text-muted">
-        왼쪽 사이드바의 ‘새 보드’를 눌러 주제별로 차트를 모은다. 예: 2026 4분기 매크로
+        왼쪽 사이드바의 ‘새 보드’를 눌러 주제별로 차트를 모아 보세요. 예: 2026 4분기 매크로
       </p>
     </div>
   )
