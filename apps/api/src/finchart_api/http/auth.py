@@ -1,61 +1,85 @@
-from dataclasses import dataclass
-from typing import Any, Protocol
-from uuid import UUID
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from pydantic import BaseModel
 
-import jwt
-from fastapi.concurrency import run_in_threadpool
+from finchart_api.http.deps import SESSION_COOKIE, CurrentAccount, ServicesDep
+from finchart_api.infra.accounts import (
+    SESSION_TTL,
+    Account,
+    AccountError,
+    UsernameTakenError,
+    normalize_username,
+)
 
-
-class TokenError(Exception):
-    pass
-
-
-class TokenVerifier(Protocol):
-    async def verify(self, token: str) -> dict[str, Any]: ...
-
-
-@dataclass(frozen=True)
-class AuthUser:
-    id: UUID
-    email: str
-    token: str
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-class SupabaseJwksVerifier:
-    """Verifies Supabase access tokens signed with the project's asymmetric keys."""
-
-    def __init__(self, supabase_url: str) -> None:
-        self._issuer = f"{supabase_url.rstrip('/')}/auth/v1"
-        self._jwks: jwt.PyJWKClient | None = None
-
-    def _client(self) -> jwt.PyJWKClient:
-        if self._jwks is None:
-            if not self._issuer.startswith("https://"):
-                raise TokenError("SUPABASE_URL is not configured")
-            self._jwks = jwt.PyJWKClient(f"{self._issuer}/.well-known/jwks.json", cache_keys=True)
-        return self._jwks
-
-    async def verify(self, token: str) -> dict[str, Any]:
-        jwks = self._client()
-        try:
-            # The JWKS fetch is blocking and cached, so it runs off the event loop.
-            key = await run_in_threadpool(jwks.get_signing_key_from_jwt, token)
-            claims: dict[str, Any] = jwt.decode(
-                token,
-                key.key,
-                algorithms=["ES256", "RS256"],
-                audience="authenticated",
-                issuer=self._issuer,
-            )
-        except jwt.PyJWTError as exc:
-            raise TokenError(str(exc)) from exc
-        return claims
+class Credentials(BaseModel):
+    username: str
+    password: str
 
 
-def user_from_claims(claims: dict[str, Any], token: str) -> AuthUser:
+class Me(BaseModel):
+    username: str
+
+
+def _client_key(request: Request, username: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{host}:{username}"
+
+
+async def _sign_in(response: Response, services: ServicesDep, account: Account) -> Me:
+    token = await services.accounts.start_session(account)
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=int(SESSION_TTL.total_seconds()),
+        httponly=True,
+        secure=services.settings.secure_cookies,
+        samesite="lax",
+        path="/",
+    )
+    return Me(username=account.username)
+
+
+@router.post("/signup", status_code=status.HTTP_201_CREATED)
+async def signup(body: Credentials, response: Response, services: ServicesDep) -> Me:
+    username = normalize_username(body.username)
+    if username not in services.settings.allowed_username_set:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "username not allowed")
     try:
-        return AuthUser(
-            id=UUID(str(claims["sub"])), email=str(claims["email"]).lower(), token=token
-        )
-    except (KeyError, ValueError) as exc:
-        raise TokenError("token is missing sub or email") from exc
+        account = await services.accounts.create(username, body.password)
+    except UsernameTakenError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "username taken") from exc
+    except AccountError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    return await _sign_in(response, services, account)
+
+
+@router.post("/login")
+async def login(
+    body: Credentials, request: Request, response: Response, services: ServicesDep
+) -> Me:
+    username = normalize_username(body.username)
+    if not services.login_limiter.allow(_client_key(request, username)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many attempts")
+    account = await services.accounts.authenticate(username, body.password)
+    if account is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+    if account.username not in services.settings.allowed_username_set:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "account not allowed")
+    return await _sign_in(response, services, account)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(request: Request, services: ServicesDep) -> Response:
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        await services.accounts.end_session(token)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
+
+
+@router.get("/me")
+async def me(account: CurrentAccount) -> Me:
+    return Me(username=account.username)

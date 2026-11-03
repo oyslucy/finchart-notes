@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
@@ -29,15 +30,15 @@ class CardOut(BaseModel):
     user_note: str | None
     model: str
     created_at: datetime
-    image_url: str | None
-    thumb_url: str | None
+    image_url: str
+    thumb_url: str
 
     @classmethod
-    def from_card(cls, card: Card, urls: dict[str, str]) -> "CardOut":
+    def from_card(cls, card: Card, url: Callable[[str], str]) -> "CardOut":
         return cls(
             **card.model_dump(include=set(cls.model_fields) - {"image_url", "thumb_url"}),
-            image_url=urls.get(card.image_path),
-            thumb_url=urls.get(card.thumb_path),
+            image_url=url(card.image_path),
+            thumb_url=url(card.thumb_path),
         )
 
 

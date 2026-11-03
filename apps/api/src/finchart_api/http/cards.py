@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 from finchart_api.domain.cards import BoardNotFoundError, create_card, delete_card
 from finchart_api.domain.models import Card, CardPatch
 from finchart_api.domain.ports import InvalidOrderError, UserData
-from finchart_api.http.deps import CurrentUser, ServicesDep, UserDataDep
+from finchart_api.http.deps import CurrentAccount, ServicesDep, UserDataDep
 from finchart_api.http.schemas import CardCreateOut, CardOut, OrderIn
 from finchart_api.imaging import InvalidImageError, detect_mime
 from finchart_api.llm.base import VisionProviderError
@@ -16,13 +16,10 @@ router = APIRouter(tags=["cards"])
 logger = logging.getLogger("uvicorn.error")
 
 ALLOWED_MIME = {"image/png", "image/jpeg", "image/webp"}
-SIGNED_URL_TTL_S = 3600
 
 
-async def _with_urls(data: UserData, cards: list[Card]) -> list[CardOut]:
-    paths = [p for c in cards for p in (c.image_path, c.thumb_path)]
-    urls = await data.storage.signed_urls(paths, SIGNED_URL_TTL_S)
-    return [CardOut.from_card(c, urls) for c in cards]
+def _with_urls(data: UserData, cards: list[Card]) -> list[CardOut]:
+    return [CardOut.from_card(c, data.storage.url) for c in cards]
 
 
 async def _read_image(upload: UploadFile, max_bytes: int) -> bytes:
@@ -43,12 +40,12 @@ async def _read_image(upload: UploadFile, max_bytes: int) -> bytes:
 async def upload_card(
     board_id: UUID,
     image: Annotated[UploadFile, File()],
-    user: CurrentUser,
+    account: CurrentAccount,
     services: ServicesDep,
     data: UserDataDep,
     response: Response,
 ) -> CardCreateOut:
-    if not services.rate_limiter.allow(str(user.id)):
+    if not services.upload_limiter.allow(str(account.id)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many uploads, retry shortly")
     image_bytes = await _read_image(image, services.settings.max_upload_bytes)
     try:
@@ -60,7 +57,7 @@ async def upload_card(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "analysis failed, retry later") from exc
     if result.duplicate:
         response.status_code = status.HTTP_200_OK
-    [card] = await _with_urls(data, [result.card])
+    [card] = _with_urls(data, [result.card])
     return CardCreateOut(card=card, duplicate=result.duplicate)
 
 
@@ -68,7 +65,7 @@ async def upload_card(
 async def list_cards(board_id: UUID, data: UserDataDep) -> list[CardOut]:
     if await data.boards.get(board_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "board not found")
-    return await _with_urls(data, await data.cards.list_for_board(board_id))
+    return _with_urls(data, await data.cards.list_for_board(board_id))
 
 
 @router.put("/boards/{board_id}/order", status_code=status.HTTP_204_NO_CONTENT)
@@ -87,7 +84,7 @@ async def update_card(card_id: UUID, body: CardPatch, data: UserDataDep) -> Card
     card = await data.cards.update(card_id, body)
     if card is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "card not found")
-    [out] = await _with_urls(data, [card])
+    [out] = _with_urls(data, [card])
     return out
 
 

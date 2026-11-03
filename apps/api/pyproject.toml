@@ -7,18 +7,22 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "fastapi>=0.162.0",
     "google-genai>=2.34.0",
-    "httpx>=0.28.1",
     "pillow>=13.0.0",
     "pydantic-settings>=2.16.2",
-    "pyjwt[crypto]>=2.15.1",
     "python-multipart>=0.0.33",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
 finchart-api = "finchart_api:main"
+
+[project.optional-dependencies]
+backup = [
+    "oci>=2.190.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]
@@ -45,6 +49,11 @@ strict = true
 python_version = "3.12"
 mypy_path = "src"
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# The OCI SDK ships no type information; it is only used by the backup job.
+module = ["oci", "oci.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

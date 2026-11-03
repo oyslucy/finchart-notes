@@ -1,5 +1,5 @@
 import io
-from uuid import UUID, uuid4
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,87 +9,138 @@ from finchart_api.config import Settings
 from finchart_api.main import create_app
 
 from .conftest import FakeProvider, make_png
-from .fakes import HmacVerifier, Store, fake_user_data, make_token
 
-ALICE = (uuid4(), "alice@example.com")
-BOB = (uuid4(), "bob@example.com")
+PASSWORD = "correct-horse-1"
 
 
 class Api:
-    def __init__(self, rate_limit: int = 100, max_upload: int = 10 * 1024 * 1024) -> None:
-        self.store = Store()
+    """One app over a temp data dir; each user gets their own cookie-carrying client."""
+
+    def __init__(self, data_dir: Path, **overrides: object) -> None:
+        options: dict[str, object] = {"allowed_usernames": "alice, bob", **overrides}
+        settings = Settings(_env_file=None, data_dir=data_dir, **options)  # type: ignore[arg-type]
         self.provider = FakeProvider()
-        settings = Settings(
-            _env_file=None,
-            allowed_emails="alice@example.com, BOB@example.com",
-            rate_limit_per_minute=rate_limit,
-            max_upload_bytes=max_upload,
-        )
-        app = create_app(
-            settings,
-            verifier=HmacVerifier(),
-            user_data=fake_user_data(self.store),
-            provider=self.provider,
-        )
-        self.client = TestClient(app)
+        self.app = create_app(settings, provider=self.provider)
+        self.data_dir = data_dir
 
-    @staticmethod
-    def auth(user: tuple[UUID, str]) -> dict[str, str]:
-        return {"Authorization": f"Bearer {make_token(*user)}"}
+    def client(self) -> TestClient:
+        return TestClient(self.app)
 
-    def board(self, user: tuple[UUID, str], title: str = "보드") -> str:
-        r = self.client.post("/api/boards", json={"title": title}, headers=self.auth(user))
-        assert r.status_code == 201
-        board_id: str = r.json()["id"]
-        return board_id
-
-    def upload(self, user: tuple[UUID, str], board_id: str, data: bytes, mime: str = "image/png"):  # type: ignore[no-untyped-def]
-        return self.client.post(
-            f"/api/boards/{board_id}/cards",
-            files={"image": ("chart.png", data, mime)},
-            headers=self.auth(user),
-        )
+    def user(self, username: str) -> TestClient:
+        client = self.client()
+        r = client.post("/api/auth/signup", json={"username": username, "password": PASSWORD})
+        assert r.status_code == 201, r.text
+        return client
 
 
-@pytest.fixture
-def api() -> Api:
-    return Api()
+def board(client: TestClient, title: str = "보드") -> str:
+    r = client.post("/api/boards", json={"title": title})
+    assert r.status_code == 201
+    board_id: str = r.json()["id"]
+    return board_id
+
+
+def upload(client: TestClient, board_id: str, data: bytes, mime: str = "image/png"):  # type: ignore[no-untyped-def]
+    return client.post(f"/api/boards/{board_id}/cards", files={"image": ("chart.png", data, mime)})
 
 
 def png(seed: int) -> bytes:
     return make_png(1000 + seed, 800)
 
 
+@pytest.fixture
+def api(tmp_path: Path) -> Api:
+    return Api(tmp_path)
+
+
 # --- auth ---
 
 
-def test_missing_token_is_401(api: Api) -> None:
-    assert api.client.get("/api/boards").status_code == 401
+def test_requests_without_session_are_401(api: Api) -> None:
+    assert api.client().get("/api/boards").status_code == 401
+    assert api.client().get("/api/auth/me").status_code == 401
 
 
-def test_garbage_token_is_401(api: Api) -> None:
-    r = api.client.get("/api/boards", headers={"Authorization": "Bearer nope"})
-    assert r.status_code == 401
+def test_signup_signs_in(api: Api) -> None:
+    alice = api.user("alice")
+    assert alice.get("/api/auth/me").json() == {"username": "alice"}
 
 
-def test_email_not_in_allow_list_is_403(api: Api) -> None:
-    r = api.client.get("/api/boards", headers=api.auth((uuid4(), "mallory@example.com")))
+def test_signup_rejects_unlisted_username(api: Api) -> None:
+    r = api.client().post("/api/auth/signup", json={"username": "mallory", "password": PASSWORD})
     assert r.status_code == 403
 
 
-def test_allow_list_is_case_insensitive(api: Api) -> None:
-    r = api.client.get("/api/boards", headers=api.auth((BOB[0], "Bob@Example.com")))
-    assert r.status_code == 200
+def test_signup_rejects_taken_username(api: Api) -> None:
+    api.user("alice")
+    r = api.client().post("/api/auth/signup", json={"username": "Alice", "password": PASSWORD})
+    assert r.status_code == 409
 
 
-def test_empty_allow_list_denies_everyone() -> None:
-    app = create_app(
-        Settings(_env_file=None),
-        verifier=HmacVerifier(),
-        user_data=fake_user_data(Store()),
-        provider=FakeProvider(),
+def test_signup_validates_password_length(api: Api) -> None:
+    r = api.client().post("/api/auth/signup", json={"username": "alice", "password": "short"})
+    assert r.status_code == 422
+
+
+def test_login_and_logout(api: Api) -> None:
+    api.user("alice")
+    client = api.client()
+
+    bad = client.post("/api/auth/login", json={"username": "alice", "password": "wrong-password"})
+    good = client.post("/api/auth/login", json={"username": "ALICE", "password": PASSWORD})
+    me = client.get("/api/auth/me")
+    out = client.post("/api/auth/logout")
+    after = client.get("/api/auth/me")
+
+    assert bad.status_code == 401
+    assert good.status_code == 200 and me.status_code == 200
+    assert out.status_code == 204
+    assert after.status_code == 401
+
+
+def test_session_cookie_is_httponly(api: Api) -> None:
+    r = api.client().post("/api/auth/signup", json={"username": "alice", "password": PASSWORD})
+    cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=lax" in cookie
+
+
+def test_removed_from_allow_list_loses_access(tmp_path: Path) -> None:
+    alice = Api(tmp_path).user("alice")
+    restricted = Api(tmp_path, allowed_usernames="bob")
+    client = restricted.client()
+    client.cookies.update(alice.cookies)
+
+    assert client.get("/api/boards").status_code == 403
+
+
+def test_login_is_rate_limited(tmp_path: Path) -> None:
+    api = Api(tmp_path, login_attempts_per_minute=3)
+    api.user("alice")
+    client = api.client()
+
+    codes = [
+        client.post(
+            "/api/auth/login", json={"username": "alice", "password": "nope-nope"}
+        ).status_code
+        for _ in range(4)
+    ]
+
+    assert codes == [401, 401, 401, 429]
+
+
+def test_same_origin_post_via_proxy_is_allowed(api: Api) -> None:
+    alice = api.user("alice")
+    r = alice.post(
+        "/api/boards",
+        json={"title": "x"},
+        headers={"Origin": "http://localhost:5173", "X-Forwarded-Host": "localhost:5173"},
     )
-    r = TestClient(app).get("/api/boards", headers=Api.auth(ALICE))
+    assert r.status_code == 201
+
+
+def test_cross_origin_post_is_blocked(api: Api) -> None:
+    alice = api.user("alice")
+    r = alice.post("/api/boards", json={"title": "x"}, headers={"Origin": "https://evil.example"})
     assert r.status_code == 403
 
 
@@ -97,182 +148,168 @@ def test_empty_allow_list_denies_everyone() -> None:
 
 
 def test_users_only_see_their_own_boards(api: Api) -> None:
-    api.board(ALICE, "앨리스")
-    api.board(BOB, "밥")
+    alice, bob = api.user("alice"), api.user("bob")
+    board(alice, "앨리스")
+    board(bob, "밥")
 
-    titles = [b["title"] for b in api.client.get("/api/boards", headers=api.auth(BOB)).json()]
-
-    assert titles == ["밥"]
+    assert [b["title"] for b in bob.get("/api/boards").json()] == ["밥"]
 
 
 def test_other_users_board_is_not_found(api: Api) -> None:
-    board_id = api.board(ALICE)
-    bob = api.auth(BOB)
+    alice, bob = api.user("alice"), api.user("bob")
+    board_id = board(alice)
 
-    assert (
-        api.client.patch(f"/api/boards/{board_id}", json={"title": "x"}, headers=bob).status_code
-        == 404
-    )
-    assert api.client.delete(f"/api/boards/{board_id}", headers=bob).status_code == 404
-    assert api.client.get(f"/api/boards/{board_id}/cards", headers=bob).status_code == 404
-    assert api.upload(BOB, board_id, png(1)).status_code == 404
+    assert bob.patch(f"/api/boards/{board_id}", json={"title": "x"}).status_code == 404
+    assert bob.delete(f"/api/boards/{board_id}").status_code == 404
+    assert bob.get(f"/api/boards/{board_id}/cards").status_code == 404
+    assert upload(bob, board_id, png(1)).status_code == 404
 
 
-def test_other_users_card_is_not_found(api: Api) -> None:
-    card_id = api.upload(ALICE, api.board(ALICE), png(1)).json()["card"]["id"]
-    bob = api.auth(BOB)
+def test_other_users_card_and_image_are_not_found(api: Api) -> None:
+    alice, bob = api.user("alice"), api.user("bob")
+    card = upload(alice, board(alice), png(1)).json()["card"]
 
-    assert (
-        api.client.patch(f"/api/cards/{card_id}", json={"user_note": "x"}, headers=bob).status_code
-        == 404
-    )
-    assert api.client.delete(f"/api/cards/{card_id}", headers=bob).status_code == 404
+    assert bob.patch(f"/api/cards/{card['id']}", json={"user_note": "x"}).status_code == 404
+    assert bob.delete(f"/api/cards/{card['id']}").status_code == 404
+    assert bob.get(card["image_url"]).status_code == 404
+    assert api.client().get(card["image_url"]).status_code == 401
+    assert alice.get(card["image_url"]).status_code == 200
+
+
+def test_image_path_traversal_is_rejected(api: Api) -> None:
+    alice = api.user("alice")
+    assert alice.get("/api/images/../finchart.db").status_code == 404
+    assert alice.get("/api/images/%2e%2e/finchart.db").status_code == 404
 
 
 def test_same_image_from_two_users_is_not_shared(api: Api) -> None:
-    image = png(1)
-    first = api.upload(ALICE, api.board(ALICE), image)
-    second = api.upload(BOB, api.board(BOB), image)
+    alice, bob = api.user("alice"), api.user("bob")
+    first = upload(alice, board(alice), png(1)).json()
+    second = upload(bob, board(bob), png(1)).json()
 
-    assert first.json()["duplicate"] is False
-    assert second.json()["duplicate"] is False
-    assert first.json()["card"]["id"] != second.json()["card"]["id"]
+    assert not first["duplicate"] and not second["duplicate"]
+    assert first["card"]["id"] != second["card"]["id"]
 
 
 # --- cards ---
 
 
-def test_upload_creates_card_with_signed_urls(api: Api) -> None:
-    r = api.upload(ALICE, api.board(ALICE), png(1))
+def test_upload_creates_card_and_serves_image(api: Api) -> None:
+    alice = api.user("alice")
+    r = upload(alice, board(alice), png(1))
 
     assert r.status_code == 201
     card = r.json()["card"]
-    assert card["title"] == "KOSPI 일봉"
-    assert card["position"] == 0
-    assert card["image_url"].startswith("https://signed.test/")
-    assert len(api.store.objects) == 2
+    assert card["title"] == "KOSPI 일봉" and card["position"] == 0
+    image = alice.get(card["image_url"])
+    assert image.status_code == 200 and image.content[:4] == b"RIFF"
+    assert "immutable" in image.headers["cache-control"]
 
 
 def test_duplicate_hash_reuses_existing_analysis(api: Api) -> None:
-    board_id = api.board(ALICE)
-    first = api.upload(ALICE, board_id, png(1))
-    second = api.upload(ALICE, board_id, png(1))
+    alice = api.user("alice")
+    board_id = board(alice)
+    first = upload(alice, board_id, png(1))
+    second = upload(alice, board_id, png(1))
 
-    assert second.status_code == 200
-    assert second.json()["duplicate"] is True
+    assert second.status_code == 200 and second.json()["duplicate"] is True
     assert second.json()["card"]["id"] == first.json()["card"]["id"]
     assert api.provider.calls == 1
 
 
 def test_reorder_changes_listing_order(api: Api) -> None:
-    board_id = api.board(ALICE)
-    ids = [api.upload(ALICE, board_id, png(i)).json()["card"]["id"] for i in range(3)]
+    alice = api.user("alice")
+    board_id = board(alice)
+    ids = [upload(alice, board_id, png(i)).json()["card"]["id"] for i in range(3)]
 
-    r = api.client.put(
-        f"/api/boards/{board_id}/order", json={"card_ids": ids[::-1]}, headers=api.auth(ALICE)
-    )
-    listed = api.client.get(f"/api/boards/{board_id}/cards", headers=api.auth(ALICE)).json()
+    r = alice.put(f"/api/boards/{board_id}/order", json={"card_ids": ids[::-1]})
+    listed = alice.get(f"/api/boards/{board_id}/cards").json()
 
     assert r.status_code == 204
     assert [c["id"] for c in listed] == ids[::-1]
     assert [c["position"] for c in listed] == [0, 1, 2]
 
 
-def test_reorder_rejects_incomplete_list(api: Api) -> None:
-    board_id = api.board(ALICE)
-    ids = [api.upload(ALICE, board_id, png(i)).json()["card"]["id"] for i in range(2)]
+def test_reorder_rejects_incomplete_or_duplicated_list(api: Api) -> None:
+    alice = api.user("alice")
+    board_id = board(alice)
+    ids = [upload(alice, board_id, png(i)).json()["card"]["id"] for i in range(2)]
 
-    r = api.client.put(
-        f"/api/boards/{board_id}/order", json={"card_ids": ids[:1]}, headers=api.auth(ALICE)
-    )
+    short = alice.put(f"/api/boards/{board_id}/order", json={"card_ids": ids[:1]})
+    doubled = alice.put(f"/api/boards/{board_id}/order", json={"card_ids": [ids[0], ids[0]]})
 
-    assert r.status_code == 400
+    assert short.status_code == 400 and doubled.status_code == 400
 
 
 def test_patch_updates_note_only(api: Api) -> None:
-    card = api.upload(ALICE, api.board(ALICE), png(1)).json()["card"]
+    alice = api.user("alice")
+    card = upload(alice, board(alice), png(1)).json()["card"]
 
-    r = api.client.patch(
-        f"/api/cards/{card['id']}", json={"user_note": "메모"}, headers=api.auth(ALICE)
-    )
+    r = alice.patch(f"/api/cards/{card['id']}", json={"user_note": "메모"})
 
     assert r.json()["user_note"] == "메모"
     assert r.json()["title"] == card["title"]
 
 
-def test_delete_card_removes_storage_objects(api: Api) -> None:
-    card_id = api.upload(ALICE, api.board(ALICE), png(1)).json()["card"]["id"]
+def test_delete_card_removes_image_files(api: Api) -> None:
+    alice = api.user("alice")
+    card_id = upload(alice, board(alice), png(1)).json()["card"]["id"]
 
-    assert api.client.delete(f"/api/cards/{card_id}", headers=api.auth(ALICE)).status_code == 204
-    assert api.store.objects == {}
+    assert alice.delete(f"/api/cards/{card_id}").status_code == 204
+    assert list((api.data_dir / "images").rglob("*.webp")) == []
 
 
-def test_delete_board_removes_cards_and_objects(api: Api) -> None:
-    board_id = api.board(ALICE)
-    api.upload(ALICE, board_id, png(1))
+def test_delete_board_removes_cards_and_files(api: Api) -> None:
+    alice = api.user("alice")
+    board_id = board(alice)
+    upload(alice, board_id, png(1))
 
-    assert api.client.delete(f"/api/boards/{board_id}", headers=api.auth(ALICE)).status_code == 204
-    assert api.store.cards == {} and api.store.objects == {}
+    assert alice.delete(f"/api/boards/{board_id}").status_code == 204
+    assert alice.get(f"/api/boards/{board_id}/cards").status_code == 404
+    assert list((api.data_dir / "images").rglob("*.webp")) == []
+
+
+def test_data_survives_app_restart(tmp_path: Path) -> None:
+    alice = Api(tmp_path).user("alice")
+    board(alice, "남는 보드")
+
+    restarted = Api(tmp_path).client()
+    restarted.cookies.update(alice.cookies)
+
+    assert [b["title"] for b in restarted.get("/api/boards").json()] == ["남는 보드"]
 
 
 # --- limits ---
 
 
 def test_rejects_non_image_mime(api: Api) -> None:
-    r = api.upload(ALICE, api.board(ALICE), b"hello", mime="text/plain")
-    assert r.status_code == 415
+    alice = api.user("alice")
+    assert upload(alice, board(alice), b"hello", mime="text/plain").status_code == 415
 
 
 def test_rejects_spoofed_image(api: Api) -> None:
-    r = api.upload(ALICE, api.board(ALICE), b"not really a png")
-    assert r.status_code == 415
+    alice = api.user("alice")
+    assert upload(alice, board(alice), b"not really a png").status_code == 415
 
 
 def test_rejects_unsupported_format_even_with_image_mime(api: Api) -> None:
+    alice = api.user("alice")
     buf = io.BytesIO()
     Image.new("RGB", (100, 100)).save(buf, format="GIF")
-    r = api.upload(ALICE, api.board(ALICE), buf.getvalue())
-    assert r.status_code == 415
+    assert upload(alice, board(alice), buf.getvalue()).status_code == 415
 
 
-def test_rejects_oversized_upload() -> None:
-    api = Api(max_upload=1000)
-    r = api.upload(ALICE, api.board(ALICE), png(1))
-    assert r.status_code == 413
+def test_rejects_oversized_upload(tmp_path: Path) -> None:
+    alice = Api(tmp_path, max_upload_bytes=1000).user("alice")
+    assert upload(alice, board(alice), png(1)).status_code == 413
 
 
-def test_rate_limit_per_user() -> None:
-    api = Api(rate_limit=2)
-    board_id = api.board(ALICE)
+def test_upload_rate_limit_is_per_user(tmp_path: Path) -> None:
+    api = Api(tmp_path, rate_limit_per_minute=2)
+    alice, bob = api.user("alice"), api.user("bob")
+    board_id = board(alice)
 
-    codes = [api.upload(ALICE, board_id, png(i)).status_code for i in range(3)]
-    bob_code = api.upload(BOB, api.board(BOB), png(9)).status_code
+    codes = [upload(alice, board_id, png(i)).status_code for i in range(3)]
 
     assert codes == [201, 201, 429]
-    assert bob_code == 201
-
-
-def test_username_allow_list() -> None:
-    domain = "users.finchart-notes.duckdns.org"
-    app = create_app(
-        Settings(_env_file=None, allowed_usernames="Lucy"),
-        verifier=HmacVerifier(),
-        user_data=fake_user_data(Store()),
-        provider=FakeProvider(),
-    )
-    client = TestClient(app)
-
-    allowed = client.get("/api/boards", headers=Api.auth((uuid4(), f"lucy@{domain}")))
-    other = client.get("/api/boards", headers=Api.auth((uuid4(), f"mallory@{domain}")))
-    wrong_domain = client.get("/api/boards", headers=Api.auth((uuid4(), "lucy@example.com")))
-
-    assert allowed.status_code == 200
-    assert other.status_code == 403
-    assert wrong_domain.status_code == 403
-
-
-def test_unconfigured_supabase_rejects_tokens_but_health_works() -> None:
-    client = TestClient(create_app(Settings(_env_file=None, allowed_emails="alice@example.com")))
-
-    assert client.get("/api/health").status_code == 200
-    assert client.get("/api/boards", headers=Api.auth(ALICE)).status_code == 401
+    assert upload(bob, board(bob), png(9)).status_code == 201
