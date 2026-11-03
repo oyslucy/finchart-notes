@@ -9,6 +9,7 @@ from finchart_api.imaging import (
     InvalidImageError,
     bbox_to_pixels,
     detect_mime,
+    pad_box,
     prepare_card_images,
     sha256_hex,
     validate_crop,
@@ -55,7 +56,8 @@ def test_prepare_crops_to_bbox(png_bytes: bytes) -> None:
     prepared = prepare_card_images(png_bytes, [250, 100, 875, 600])
 
     assert prepared.cropped
-    assert (prepared.width, prepared.height) == (500, 500)
+    # 500x500 box plus a 0.8% margin on each side (8px horizontally, 6px vertically)
+    assert (prepared.width, prepared.height) == (516, 512)
     assert Image.open(io.BytesIO(prepared.image)).format == "WEBP"
     assert max(Image.open(io.BytesIO(prepared.thumb)).size) <= 480
 
@@ -89,3 +91,8 @@ def test_detect_mime_rejects_unsupported_format() -> None:
     Image.new("RGB", (10, 10)).save(buf, format="GIF")
     with pytest.raises(InvalidImageError):
         detect_mime(buf.getvalue())
+
+
+def test_pad_box_expands_and_clamps() -> None:
+    assert pad_box((100, 200, 600, 700), 1000, 800) == (92, 194, 608, 706)
+    assert pad_box((0, 0, 1000, 800), 1000, 800) == (0, 0, 1000, 800)

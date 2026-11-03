@@ -8,6 +8,8 @@ from PIL import Image, ImageOps
 Image.MAX_IMAGE_PIXELS = 40_000_000
 
 MIN_CROP_SIDE_PX = 64
+# VLM boxes tend to hug the plot tightly and clip axis labels, so crops get a small margin.
+CROP_PAD_RATIO = 0.008
 MAX_CROP_AREA_RATIO = 0.9
 THUMB_MAX_SIDE_PX = 480
 WEBP_QUALITY = 90
@@ -74,6 +76,17 @@ def bbox_to_pixels(bbox: list[int], width: int, height: int) -> PixelBox:
     return left, top, min(right, width), min(bottom, height)
 
 
+def pad_box(box: PixelBox, width: int, height: int, ratio: float = CROP_PAD_RATIO) -> PixelBox:
+    left, top, right, bottom = box
+    pad_x, pad_y = round(width * ratio), round(height * ratio)
+    return (
+        max(left - pad_x, 0),
+        max(top - pad_y, 0),
+        min(right + pad_x, width),
+        min(bottom + pad_y, height),
+    )
+
+
 def validate_crop(box: PixelBox, width: int, height: int) -> None:
     left, top, right, bottom = box
     crop_w, crop_h = right - left, bottom - top
@@ -101,7 +114,7 @@ def prepare_card_images(data: bytes, bbox: list[int]) -> PreparedImages:
     box = bbox_to_pixels(bbox, img.width, img.height)
     try:
         validate_crop(box, img.width, img.height)
-        target, cropped = img.crop(box), True
+        target, cropped = img.crop(pad_box(box, img.width, img.height)), True
     except CropRejectedError:
         target, cropped = img, False
     return PreparedImages(

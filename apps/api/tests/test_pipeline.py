@@ -13,4 +13,4 @@ async def test_pipeline_analyzes_and_crops(png_bytes: bytes) -> None:
     assert result.sha256 == sha256_hex(png_bytes)
     assert result.vision.model == "fake"
     assert result.images.cropped
-    assert (result.images.width, result.images.height) == (500, 500)
+    assert (result.images.width, result.images.height) == (516, 512)
