@@ -1,2 +1,7 @@
 CLAUDE.md
 docs/FREE_TIER.md
+
+.env
+.env.*
+!.env.example
+.DS_Store
