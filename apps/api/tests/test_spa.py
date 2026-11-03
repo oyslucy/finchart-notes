@@ -8,7 +8,7 @@ from finchart_api.main import create_app
 
 def _client(tmp_path: Path) -> TestClient:
     (tmp_path / "index.html").write_text("<html>spa</html>")
-    return TestClient(create_app(Settings(web_dist_dir=tmp_path)))
+    return TestClient(create_app(Settings(_env_file=None, web_dist_dir=tmp_path)))
 
 
 def test_client_route_falls_back_to_index(tmp_path: Path) -> None:
