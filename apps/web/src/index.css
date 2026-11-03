@@ -128,3 +128,21 @@
     opacity: 1;
   }
 }
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  html {
+    background: #fff;
+  }
+
+  article {
+    break-inside: avoid;
+  }
+}

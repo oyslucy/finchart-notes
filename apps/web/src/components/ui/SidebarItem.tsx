@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { cx } from '../../design/cx.ts'
 import { Icon } from './Icon.tsx'
@@ -8,18 +9,24 @@ export interface SidebarItemProps extends ComponentProps<'a'> {
   icon?: LucideIcon
   active?: boolean
   count?: number
+  /** Render as a client-side router link instead of a plain anchor. */
+  asLink?: boolean
 }
 
 export function SidebarItem({
   icon,
   active,
   count,
+  asLink,
   className,
   children,
+  href = '#',
   ...props
 }: SidebarItemProps) {
+  const Anchor = asLink ? RouterAnchor : 'a'
   return (
-    <a
+    <Anchor
+      href={href}
       aria-current={active ? 'page' : undefined}
       className={cx(
         'group flex h-[30px] items-center gap-2 rounded-md px-2 text-[14px]',
@@ -38,8 +45,12 @@ export function SidebarItem({
       )}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {count !== undefined && <span className="text-[12px] text-text-faint tabular">{count}</span>}
-    </a>
+    </Anchor>
   )
+}
+
+function RouterAnchor({ href, ...props }: ComponentProps<'a'> & { href: string }) {
+  return <Link to={href} {...props} />
 }
 
 export function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
