@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+.git
+.github
+.claude
+.env
+.env.*
+docs
+deploy
+CLAUDE.md
