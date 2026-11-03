@@ -1,4 +1,3 @@
-import { supabase } from './supabase.ts'
 import type { Board, Card, CardCreateResult, CardPatch } from './types.ts'
 
 export class ApiError extends Error {
@@ -11,13 +10,11 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
   const headers = new Headers(init.headers)
-  if (token) headers.set('Authorization', `Bearer ${token}`)
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
 
-  const response = await fetch(`/api${path}`, { ...init, headers })
+  // The session lives in an httpOnly cookie, which same-origin fetches send automatically.
+  const response = await fetch(`/api${path}`, { ...init, headers, credentials: 'same-origin' })
   if (response.status === 204) return undefined as T
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
@@ -30,7 +27,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T
 }
 
+export interface Me {
+  username: string
+}
+
 export const api = {
+  me: () => request<Me>('/auth/me'),
+  signup: (username: string, password: string) =>
+    request<Me>('/auth/signup', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  login: (username: string, password: string) =>
+    request<Me>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  logout: () => request<undefined>('/auth/logout', { method: 'POST' }),
+
   listBoards: () => request<Board[]>('/boards'),
   createBoard: (title: string) =>
     request<Board>('/boards', { method: 'POST', body: JSON.stringify({ title }) }),

@@ -7,21 +7,19 @@ import { IconButton } from '../components/ui/IconButton.tsx'
 import { SidebarItem, SidebarSection } from '../components/ui/SidebarItem.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
-import { useSession } from '../features/auth/session.ts'
-import { usernameFromEmail } from '../features/auth/username.ts'
+import { useMe, useSignOut } from '../features/auth/session.ts'
 import { useBoards, useCreateBoard } from '../features/boards/queries.ts'
 import { errorMessage } from '../lib/api.ts'
-import { supabase } from '../lib/supabase.ts'
 
 export default function AppLayout() {
-  const session = useSession()
+  const me = useMe()
 
-  if (session.status === 'loading') return null
-  if (!session.session) return <Navigate to="/login" replace />
+  if (me.isPending) return null
+  if (!me.data) return <Navigate to="/login" replace />
 
   return (
     <div className="flex min-h-dvh">
-      <Sidebar username={usernameFromEmail(session.session.user.email)} />
+      <Sidebar username={me.data.username} />
       <main className="min-w-0 flex-1">
         <Outlet />
       </main>
@@ -33,6 +31,7 @@ function Sidebar({ username }: { username: string }) {
   const { boardId } = useParams()
   const boards = useBoards()
   const [creating, setCreating] = useState(false)
+  const signOut = useSignOut()
 
   return (
     <aside
@@ -88,7 +87,7 @@ function Sidebar({ username }: { username: string }) {
           label="로그아웃"
           size="sm"
           onClick={() => {
-            void supabase.auth.signOut()
+            signOut.mutate()
           }}
         />
       </div>

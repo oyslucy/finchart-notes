@@ -7,24 +7,24 @@ import { Button } from '../components/ui/Button.tsx'
 import { Input } from '../components/ui/Field.tsx'
 import { cx } from '../design/cx.ts'
 import { appear } from '../design/motion.ts'
-import { useSession } from '../features/auth/session.ts'
 import {
   MIN_PASSWORD_LENGTH,
   USERNAME_PATTERN,
-  normalizeUsername,
-  usernameToEmail,
-} from '../features/auth/username.ts'
-import { supabase, supabaseConfigured } from '../lib/supabase.ts'
+  useMe,
+  useSignIn,
+} from '../features/auth/session.ts'
+import { ApiError } from '../lib/api.ts'
 
 type Mode = 'signin' | 'signup'
 
-function authErrorMessage(message: string): string {
-  if (/invalid login credentials/i.test(message)) return '아이디 또는 비밀번호가 맞지 않습니다.'
-  if (/already registered|already exists/i.test(message)) return '이미 사용 중인 아이디입니다.'
-  if (/password/i.test(message)) return '비밀번호 조건을 확인해 주세요.'
-  if (/rate limit|too many/i.test(message))
-    return '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.'
-  return message
+function authErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return '알 수 없는 오류가 발생했습니다.'
+  if (error.status === 401) return '아이디 또는 비밀번호가 맞지 않습니다.'
+  if (error.status === 403) return '사용이 허용되지 않은 아이디입니다.'
+  if (error.status === 409) return '이미 사용 중인 아이디입니다.'
+  if (error.status === 429) return '시도가 너무 많습니다. 1분 뒤 다시 시도해 주세요.'
+  if (error.status === 422) return '아이디와 비밀번호 조건을 확인해 주세요.'
+  return error.message
 }
 
 function validate(mode: Mode, username: string, password: string, confirm: string): string | null {
@@ -36,39 +36,33 @@ function validate(mode: Mode, username: string, password: string, confirm: strin
 }
 
 export default function LoginPage() {
-  const session = useSession()
+  const me = useMe()
   const [mode, setMode] = useState<Mode>('signin')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const signIn = useSignIn(mode)
 
-  if (session.status === 'ready' && session.session) return <Navigate to="/" replace />
+  if (me.data) return <Navigate to="/" replace />
 
-  const submit = async (event: SyntheticEvent) => {
+  const submit = (event: SyntheticEvent) => {
     event.preventDefault()
-    const name = normalizeUsername(username)
+    const name = username.trim().toLowerCase()
     const invalid = validate(mode, name, password, confirm)
     if (invalid) {
       setError(invalid)
       return
     }
-    setBusy(true)
     setError(null)
-    const credentials = { email: usernameToEmail(name), password }
-    const result =
-      mode === 'signin'
-        ? await supabase.auth.signInWithPassword(credentials)
-        : await supabase.auth.signUp({ ...credentials, options: { data: { username: name } } })
-    setBusy(false)
-    if (result.error) {
-      setError(authErrorMessage(result.error.message))
-    } else if (!result.data.session) {
-      setError(
-        '가입은 됐지만 바로 로그인되지 않았습니다. Supabase에서 이메일 확인 설정을 꺼 주세요.',
-      )
-    }
+    signIn.mutate(
+      { username: name, password },
+      {
+        onError: (e) => {
+          setError(authErrorMessage(e))
+        },
+      },
+    )
   }
 
   const switchMode = (next: Mode) => {
@@ -115,13 +109,7 @@ export default function LoginPage() {
             ))}
           </div>
 
-          <form
-            onSubmit={(e) => {
-              void submit(e)
-            }}
-            className="flex flex-col gap-4"
-            noValidate
-          >
+          <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
             <Input
               label="아이디"
               autoComplete="username"
@@ -134,7 +122,6 @@ export default function LoginPage() {
               onChange={(e) => {
                 setUsername(e.target.value)
               }}
-              disabled={!supabaseConfigured}
             />
             <Input
               label="비밀번호"
@@ -146,7 +133,6 @@ export default function LoginPage() {
               onChange={(e) => {
                 setPassword(e.target.value)
               }}
-              disabled={!supabaseConfigured}
             />
             {mode === 'signup' && (
               <Input
@@ -165,18 +151,13 @@ export default function LoginPage() {
                 {error}
               </p>
             )}
-            {!supabaseConfigured && (
-              <p className="text-[13px] text-text-muted">
-                VITE_SUPABASE_URL이 설정되지 않았습니다.
-              </p>
-            )}
             <Button
               type="submit"
               variant="primary"
               icon={mode === 'signin' ? LogIn : UserPlus}
-              disabled={busy || !supabaseConfigured}
+              disabled={signIn.isPending}
             >
-              {busy ? '잠시만요' : mode === 'signin' ? '로그인' : '가입하고 시작하기'}
+              {signIn.isPending ? '잠시만요' : mode === 'signin' ? '로그인' : '가입하고 시작하기'}
             </Button>
           </form>
         </div>
