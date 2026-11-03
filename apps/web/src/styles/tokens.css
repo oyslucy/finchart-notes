@@ -1,0 +1,84 @@
+/*
+ * Design tokens. Components only reference semantic tokens (--bg, --text, --accent ...);
+ * the raw scale exists so semantic tokens can be remapped per theme.
+ */
+
+:root {
+  /* Warm neutral scale, 1 = lightest surface, 10 = strongest text */
+  --gray-1: #fbfaf8;
+  --gray-2: #f5f4f1;
+  --gray-3: #eeece8;
+  --gray-4: #e4e1dc;
+  --gray-5: #d6d2cc;
+  --gray-6: #b9b4ac;
+  --gray-7: #958f87;
+  --gray-8: #6f6a63;
+  --gray-9: #47433f;
+  --gray-10: #22201e;
+
+  /* Single accent: low-saturation deep blue */
+  --blue-1: #eef2f6;
+  --blue-2: #dbe3ec;
+  --blue-6: #3a5577;
+  --blue-7: #2f4865;
+  --blue-8: #253a52;
+
+  --red-1: #f8eeec;
+  --red-6: #9c4138;
+  --green-6: #3f6a4e;
+
+  --bg: var(--gray-1);
+  --bg-subtle: var(--gray-2);
+  --bg-muted: var(--gray-3);
+  --surface: #ffffff;
+  --border: var(--gray-4);
+  --border-strong: var(--gray-5);
+  --text: var(--gray-10);
+  --text-secondary: var(--gray-9);
+  --text-muted: var(--gray-8);
+  --text-faint: var(--gray-7);
+  --accent: var(--blue-6);
+  --accent-hover: var(--blue-7);
+  --accent-active: var(--blue-8);
+  --accent-subtle: var(--blue-1);
+  --accent-subtle-hover: var(--blue-2);
+  --accent-fg: #ffffff;
+  --danger: var(--red-6);
+  --danger-subtle: var(--red-1);
+  --success: var(--green-6);
+  --focus-ring: color-mix(in oklab, var(--accent) 45%, transparent);
+  --overlay: rgb(34 32 30 / 0.28);
+  --shadow-color: 30 25 20;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --gray-1: #151413;
+  --gray-2: #1b1a19;
+  --gray-3: #232120;
+  --gray-4: #2d2b29;
+  --gray-5: #3a3734;
+  --gray-6: #524e4a;
+  --gray-7: #77726c;
+  --gray-8: #9c968f;
+  --gray-9: #c9c4bd;
+  --gray-10: #edeae6;
+
+  --blue-1: #1b2330;
+  --blue-2: #233042;
+  --blue-6: #8ea7c6;
+  --blue-7: #a3b9d4;
+  --blue-8: #b8cae0;
+
+  --red-1: #2f1e1b;
+  --red-6: #d9928a;
+  --green-6: #8fbc9d;
+
+  --surface: var(--gray-2);
+  --accent-fg: #11161d;
+  --overlay: rgb(0 0 0 / 0.5);
+  --shadow-color: 0 0 0;
+
+  color-scheme: dark;
+}
