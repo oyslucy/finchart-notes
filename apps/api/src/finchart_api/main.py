@@ -1,8 +1,8 @@
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from finchart_api.config import Settings, get_settings
 from finchart_api.http import health
+from finchart_api.http.spa import SpaStaticFiles
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -12,6 +12,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Mounted last so /api routes take precedence over the SPA catch-all.
     if settings.web_dist_dir and settings.web_dist_dir.is_dir():
-        app.mount("/", StaticFiles(directory=settings.web_dist_dir, html=True), name="web")
+        app.mount("/", SpaStaticFiles(settings.web_dist_dir), name="web")
 
     return app
