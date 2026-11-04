@@ -49,6 +49,10 @@ TELEGRAM_BOT_TOKEN=... TELEGRAM_WEBHOOK_SECRET=... \
 PUBLIC_BASE_URL=https://finchart-notes.duckdns.org \
   python3 scripts/set_webhook.py set
 
+# 또는 VM에서 (VM .env의 시크릿을 그대로 사용, Python 3.8 이상)
+scp -i <키> scripts/set_webhook.py ubuntu@<VM_IP>:/tmp/ && \
+  ssh -i <키> ubuntu@<VM_IP> 'python3 /tmp/set_webhook.py set --env-file ~/finchart/.env'
+
 python3 scripts/set_webhook.py info --env-file apps/api/.env    # 상태와 마지막 오류 확인
 python3 scripts/set_webhook.py delete --env-file apps/api/.env  # 해제
 ```
