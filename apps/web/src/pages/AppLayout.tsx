@@ -1,4 +1,6 @@
-import { House, LayoutGrid, LogOut, Plus } from 'lucide-react'
+import { House, LayoutGrid, LogOut, Menu, Plus, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useState, type SyntheticEvent } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 
@@ -8,6 +10,7 @@ import { Logo } from '../components/ui/Logo.tsx'
 import { SidebarItem, SidebarSection } from '../components/ui/SidebarItem.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
+import { durations, easeOut, fade } from '../design/motion.ts'
 import { useMe, useSignOut } from '../features/auth/session.ts'
 import { useBoards, useCreateBoard } from '../features/boards/queries.ts'
 import { errorMessage } from '../lib/api.ts'
@@ -19,8 +22,14 @@ export default function AppLayout() {
   if (!me.data) return <Navigate to="/login" replace />
 
   return (
-    <div className="flex min-h-dvh">
-      <Sidebar username={me.data.username} />
+    <div className="flex min-h-dvh flex-col md:flex-row">
+      <MobileBar username={me.data.username} />
+      <aside
+        data-print-hide
+        className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col border-r border-border bg-bg-subtle px-2.5 py-3 md:flex"
+      >
+        <SidebarContent username={me.data.username} />
+      </aside>
       <main className="min-w-0 flex-1">
         <Outlet />
       </main>
@@ -28,7 +37,66 @@ export default function AppLayout() {
   )
 }
 
-function Sidebar({ username }: { username: string }) {
+function MobileBar({ username }: { username: string }) {
+  const { pathname } = useLocation()
+  // Remember where the drawer was opened; navigating anywhere else closes it.
+  const [openedAt, setOpenedAt] = useState<string | null>(null)
+  const open = openedAt === pathname
+  const setOpen = (next: boolean) => {
+    setOpenedAt(next ? pathname : null)
+  }
+
+  return (
+    <header
+      data-print-hide
+      className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border bg-bg px-3 md:hidden"
+    >
+      <Link to="/" className="flex items-center px-1" aria-label="finchart-notes 홈">
+        <Logo />
+      </Link>
+      <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+        <DialogPrimitive.Trigger asChild>
+          <IconButton icon={Menu} label="메뉴 열기" tooltip={false} />
+        </DialogPrimitive.Trigger>
+        <AnimatePresence>
+          {open && (
+            <DialogPrimitive.Portal forceMount>
+              <DialogPrimitive.Overlay asChild forceMount>
+                <motion.div className="fixed inset-0 z-40 bg-overlay" {...fade} />
+              </DialogPrimitive.Overlay>
+              <DialogPrimitive.Content asChild forceMount>
+                <motion.nav
+                  className="fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col border-r border-border bg-bg-subtle px-2.5 py-3 shadow-pop focus:outline-none"
+                  initial={{ x: -24, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -24, opacity: 0 }}
+                  transition={{ duration: durations.appear, ease: easeOut }}
+                >
+                  <DialogPrimitive.Title className="sr-only">메뉴</DialogPrimitive.Title>
+                  <DialogPrimitive.Description className="sr-only">
+                    보드를 고르거나 새로 만듭니다.
+                  </DialogPrimitive.Description>
+                  <DialogPrimitive.Close asChild>
+                    <IconButton
+                      icon={X}
+                      label="메뉴 닫기"
+                      size="sm"
+                      tooltip={false}
+                      className="absolute top-3 right-2.5"
+                    />
+                  </DialogPrimitive.Close>
+                  <SidebarContent username={username} />
+                </motion.nav>
+              </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+          )}
+        </AnimatePresence>
+      </DialogPrimitive.Root>
+    </header>
+  )
+}
+
+function SidebarContent({ username }: { username: string }) {
   const { boardId } = useParams()
   const { pathname } = useLocation()
   const boards = useBoards()
@@ -36,10 +104,7 @@ function Sidebar({ username }: { username: string }) {
   const signOut = useSignOut()
 
   return (
-    <aside
-      data-print-hide
-      className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col border-r border-border bg-bg-subtle px-2.5 py-3 md:flex"
-    >
+    <>
       <Link to="/" className="flex h-8 items-center px-2" aria-label="finchart-notes 홈">
         <Logo />
       </Link>
@@ -95,7 +160,7 @@ function Sidebar({ username }: { username: string }) {
           }}
         />
       </div>
-    </aside>
+    </>
   )
 }
 
