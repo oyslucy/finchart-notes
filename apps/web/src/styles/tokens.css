@@ -16,18 +16,19 @@
   --gray-9: #47433f;
   --gray-10: #22201e;
 
-  /* Single accent: low-saturation deep blue */
-  --blue-1: #eef2f6;
-  --blue-2: #dbe3ec;
-  --blue-6: #3a5577;
-  --blue-7: #2f4865;
-  --blue-8: #253a52;
+  /* Single accent: soft violet. accent-6 keeps 4.5:1 with white text; tints carry the
+     "light purple" feel. */
+  --violet-1: #f4f2fe;
+  --violet-2: #e8e4fc;
+  --violet-6: #7266d6;
+  --violet-7: #6458c9;
+  --violet-8: #584cbb;
 
   --red-1: #f8eeec;
   --red-6: #9c4138;
   --green-6: #3f6a4e;
 
-  --bg: var(--gray-1);
+  --bg: #ffffff;
   --bg-subtle: var(--gray-2);
   --bg-muted: var(--gray-3);
   --surface: #ffffff;
@@ -37,11 +38,11 @@
   --text-secondary: var(--gray-9);
   --text-muted: var(--gray-8);
   --text-faint: var(--gray-7);
-  --accent: var(--blue-6);
-  --accent-hover: var(--blue-7);
-  --accent-active: var(--blue-8);
-  --accent-subtle: var(--blue-1);
-  --accent-subtle-hover: var(--blue-2);
+  --accent: var(--violet-6);
+  --accent-hover: var(--violet-7);
+  --accent-active: var(--violet-8);
+  --accent-subtle: var(--violet-1);
+  --accent-subtle-hover: var(--violet-2);
   --accent-fg: #ffffff;
   --danger: var(--red-6);
   --danger-subtle: var(--red-1);
@@ -65,18 +66,19 @@
   --gray-9: #c9c4bd;
   --gray-10: #edeae6;
 
-  --blue-1: #1b2330;
-  --blue-2: #233042;
-  --blue-6: #8ea7c6;
-  --blue-7: #a3b9d4;
-  --blue-8: #b8cae0;
+  --violet-1: #211e33;
+  --violet-2: #2b2745;
+  --violet-6: #b9b0f7;
+  --violet-7: #c7c0f9;
+  --violet-8: #d4cefb;
 
   --red-1: #2f1e1b;
   --red-6: #d9928a;
   --green-6: #8fbc9d;
 
+  --bg: var(--gray-1);
   --surface: var(--gray-2);
-  --accent-fg: #11161d;
+  --accent-fg: #17142a;
   --overlay: rgb(0 0 0 / 0.5);
   --shadow-color: 0 0 0;
 
