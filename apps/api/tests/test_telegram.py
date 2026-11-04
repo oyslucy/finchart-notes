@@ -9,7 +9,7 @@ from PIL import Image
 from pydantic import SecretStr
 
 from finchart_api.config import Settings
-from finchart_api.infra.telegram_api import TelegramFile
+from finchart_api.infra.telegram_api import Keyboard, TelegramFile
 from finchart_api.main import create_app
 
 from .conftest import FakeProvider, make_png
@@ -22,14 +22,23 @@ class FakeTelegram:
     def __init__(self) -> None:
         self.sent: list[tuple[int, str]] = []
         self.edits: list[tuple[int, int, str]] = []
+        self.keyboards: list[Keyboard | None] = []
+        self.answers: list[str] = []
         self.files: dict[str, bytes] = {}
 
-    async def send_message(self, chat_id: int, text: str) -> int:
+    async def send_message(self, chat_id: int, text: str, keyboard: Keyboard | None = None) -> int:
         self.sent.append((chat_id, text))
+        self.keyboards.append(keyboard)
         return len(self.sent)
 
-    async def edit_message_text(self, chat_id: int, message_id: int, text: str) -> None:
+    async def edit_message_text(
+        self, chat_id: int, message_id: int, text: str, keyboard: Keyboard | None = None
+    ) -> None:
         self.edits.append((chat_id, message_id, text))
+        self.keyboards.append(keyboard)
+
+    async def answer_callback_query(self, callback_query_id: str, text: str) -> None:
+        self.answers.append(text)
 
     async def get_file(self, file_id: str) -> TelegramFile:
         return TelegramFile(file_path=file_id, file_size=len(self.files[file_id]))
@@ -90,6 +99,25 @@ class Harness:
             },
         }
         headers = {"X-Telegram-Bot-Api-Secret-Token": secret} if secret else {}
+        return self.bot_client.post("/api/telegram/webhook", json=body, headers=headers)
+
+    def press(self, data: str, tg_user: int = 111, text: str = "", message_id: int = 1):  # type: ignore[no-untyped-def]
+        update_id = self.next_update
+        self.next_update += 1
+        body = {
+            "update_id": update_id,
+            "callback_query": {
+                "id": f"cb{update_id}",
+                "from": {"id": tg_user},
+                "data": data,
+                "message": {
+                    "message_id": message_id,
+                    "chat": {"id": tg_user, "type": "private"},
+                    "text": text,
+                },
+            },
+        }
+        headers = {"X-Telegram-Bot-Api-Secret-Token": SECRET}
         return self.bot_client.post("/api/telegram/webhook", json=body, headers=headers)
 
     def linked_user(self, username: str = "alice", tg_user: int = 111) -> TestClient:
@@ -298,7 +326,7 @@ def test_board_command_changes_default(h: Harness) -> None:
     assert "기본 보드는 '매크로'" in h.telegram.sent[-2][1]
     assert "보드: 매크로" in h.telegram.edits[-1][2]
     h.send(text="/board")
-    assert "• 매크로" in h.telegram.sent[-1][1]
+    assert "기본 보드: 매크로" in h.telegram.sent[-1][1]
     assert [b["title"] for b in web.get("/api/boards").json()] == ["매크로"]
 
 
@@ -345,3 +373,94 @@ def test_daily_quota_message(tmp_path: Path) -> None:
     h.document(make_png(1001), file_id="a")
     h.document(make_png(1002), file_id="b")
     assert "오늘 분석할 수 있는 장수" in h.telegram.edits[-1][2]
+
+
+# --- inline board buttons ---
+
+
+def _buttons(keyboard: Keyboard | None) -> list[dict[str, str]]:
+    return [button for row in keyboard or [] for button in row]
+
+
+def test_analysis_reply_offers_existing_boards(h: Harness) -> None:
+    web = h.linked_user()
+    web.post("/api/boards", json={"title": "반도체"})
+    web.post("/api/boards", json={"title": "IT"})
+
+    h.document(make_png())
+
+    titles = [b["text"] for b in _buttons(h.telegram.keyboards[-1])]
+    assert sorted(titles) == ["IT", "반도체"]
+    assert "아래에서 고르세요" in h.telegram.edits[-1][2]
+    assert all(len(b["callback_data"].encode()) <= 64 for b in _buttons(h.telegram.keyboards[-1]))
+
+
+def test_board_button_moves_card(h: Harness) -> None:
+    web = h.linked_user()
+    target = web.post("/api/boards", json={"title": "반도체"}).json()["id"]
+    h.document(make_png())
+    reply = h.telegram.edits[-1][2]
+    button = _buttons(h.telegram.keyboards[-1])[0]
+
+    h.press(button["callback_data"], text=reply)
+
+    assert h.telegram.answers[-1] == "'반도체'(으)로 옮겼습니다."
+    edited = h.telegram.edits[-1][2]
+    assert "보드: 반도체" in edited and f"/boards/{target}/cards/" in edited
+    assert [b["text"] for b in _buttons(h.telegram.keyboards[-1])] == ["Inbox"]
+    assert len(web.get(f"/api/boards/{target}/cards").json()) == 1
+
+
+def test_board_button_from_other_telegram_user_is_refused(h: Harness) -> None:
+    web = h.linked_user("alice", tg_user=111)
+    web.post("/api/boards", json={"title": "반도체"})
+    h.document(make_png())
+    button = _buttons(h.telegram.keyboards[-1])[0]
+    h.linked_user("bob", tg_user=222)
+
+    h.press(button["callback_data"], tg_user=222)
+    h.press(button["callback_data"], tg_user=999)
+
+    assert h.telegram.answers[-2] == "카드나 보드를 찾을 수 없습니다."
+    assert "먼저 연결" in h.telegram.answers[-1]
+
+
+def test_forged_callback_data_is_rejected(h: Harness) -> None:
+    h.linked_user()
+    h.press("m:not-base64:@@")
+    assert h.telegram.answers[-1] == "알 수 없는 요청입니다."
+
+
+def test_board_menu_buttons_set_default(h: Harness) -> None:
+    web = h.linked_user()
+    web.post("/api/boards", json={"title": "반도체"})
+    web.post("/api/boards", json={"title": "IT"})
+
+    h.send(text="/board")
+    choice = next(b for b in _buttons(h.telegram.keyboards[-1]) if b["text"] == "IT")
+    h.press(choice["callback_data"])
+    h.document(make_png())
+
+    assert h.telegram.answers[-1] == "기본 보드: IT"
+    assert "보드: IT" in h.telegram.edits[-1][2]
+
+
+def test_callback_update_is_idempotent(h: Harness) -> None:
+    web = h.linked_user()
+    web.post("/api/boards", json={"title": "반도체"})
+    h.document(make_png())
+    button = _buttons(h.telegram.keyboards[-1])[0]
+    body = {
+        "update_id": 9000,
+        "callback_query": {
+            "id": "cb",
+            "from": {"id": 111},
+            "data": button["callback_data"],
+            "message": {"message_id": 1, "chat": {"id": 111, "type": "private"}, "text": ""},
+        },
+    }
+    headers = {"X-Telegram-Bot-Api-Secret-Token": SECRET}
+    h.bot_client.post("/api/telegram/webhook", json=body, headers=headers)
+    h.bot_client.post("/api/telegram/webhook", json=body, headers=headers)
+
+    assert len(h.telegram.answers) == 1

@@ -1,5 +1,6 @@
 """Telegram bot (application layer). Images go through the same create_card use case as the web."""
 
+import base64
 import logging
 import re
 from dataclasses import dataclass
@@ -17,13 +18,16 @@ from finchart_api.domain.uploads import (
 )
 from finchart_api.http.ratelimit import RateLimiter
 from finchart_api.infra.sqlite import Database, sqlite_user_data
-from finchart_api.infra.telegram_api import TelegramApiError, TelegramClient
+from finchart_api.infra.telegram_api import Keyboard, TelegramApiError, TelegramClient
 from finchart_api.infra.telegram_store import LinkResult, TelegramLink, TelegramStore
 from finchart_api.llm.base import VisionProvider, VisionProviderError
 
 log = logging.getLogger("finchart.telegram")
 
 INBOX_TITLE = "Inbox"
+MAX_BOARD_BUTTONS = 8
+BOARD_LINE = "보드: "
+MOVE_HINT = "다른 보드에 저장하려면 아래에서 고르세요."
 FILE_TIP = "화질 유지를 위해 사진 대신 파일로 보내세요."
 _HASHTAG = re.compile(r"#([^\s#]+)")
 
@@ -60,6 +64,14 @@ class TelegramBot:
 
     async def process_update(self, update: dict[str, Any]) -> None:
         """Handles one update. Safe to call again with the same update (Telegram retries)."""
+        callback = update.get("callback_query")
+        if isinstance(callback, dict):
+            if await self.store.claim_update(int(update["update_id"])):
+                try:
+                    await self._callback(callback)
+                except TelegramApiError as exc:
+                    log.warning("telegram callback failed: %s", exc)
+            return
         message = update.get("message")
         if not isinstance(message, dict) or message.get("chat", {}).get("type") != "private":
             return
@@ -140,15 +152,8 @@ class TelegramBot:
         data = sqlite_user_data(self.db, link.user_id)
         if not name:
             boards = await data.boards.list_all()
-            lines = [
-                f"{'• ' if b.id == link.default_board_id else '  '}{b.title}" for b in boards
-            ] or ["(보드가 없습니다)"]
-            await self.client.send_message(
-                chat_id,
-                "보드 목록 (• 기본 보드)\n"
-                + "\n".join(lines)
-                + "\n\n/board 보드이름 으로 바꿉니다.",
-            )
+            text, keyboard = _default_board_menu(boards, link.default_board_id)
+            await self.client.send_message(chat_id, text, keyboard)
             return
         board = await _find_or_create_board(data, name)
         await self.store.set_default_board(link.user_id, board.id)
@@ -181,12 +186,14 @@ class TelegramBot:
             return
 
         pending = await self.client.send_message(chat_id, "분석 중…")
-        reply = await self._run_analysis(link, image, caption)
+        reply, keyboard = await self._run_analysis(link, image, caption)
         if image.from_photo:
             reply += f"\n\n팁: {FILE_TIP}"
-        await self.client.edit_message_text(chat_id, pending, reply)
+        await self.client.edit_message_text(chat_id, pending, reply, keyboard)
 
-    async def _run_analysis(self, link: TelegramLink, image: IncomingImage, caption: str) -> str:
+    async def _run_analysis(
+        self, link: TelegramLink, image: IncomingImage, caption: str
+    ) -> tuple[str, Keyboard | None]:
         data = sqlite_user_data(self.db, link.user_id)
         try:
             file = await self.client.get_file(image.file_id)
@@ -197,23 +204,81 @@ class TelegramBot:
                 data, self.provider, board.id, content, daily_quota=self.daily_quota
             )
         except UploadTooLargeError:
-            return self._too_large()
+            return self._too_large(), None
         except UnsupportedImageError:
-            return "PNG, JPEG, WebP 이미지만 분석할 수 있습니다."
+            return "PNG, JPEG, WebP 이미지만 분석할 수 있습니다.", None
         except DailyQuotaExceededError:
-            return "오늘 분석할 수 있는 장수를 모두 썼습니다. 내일 다시 보내 주세요."
+            return "오늘 분석할 수 있는 장수를 모두 썼습니다. 내일 다시 보내 주세요.", None
         except VisionProviderError:
-            return "분석 요청이 몰려 실패했습니다. 잠시 후 다시 보내 주세요."
+            return "분석 요청이 몰려 실패했습니다. 잠시 후 다시 보내 주세요.", None
         except (TelegramApiError, BoardNotFoundError) as exc:
             log.warning("telegram analysis failed: %s", exc)
-            return "이미지를 처리하지 못했습니다. 잠시 후 다시 보내 주세요."
+            return "이미지를 처리하지 못했습니다. 잠시 후 다시 보내 주세요.", None
 
         card = result.card
+        # A duplicate may live on another board; report where it actually is.
+        current = await data.boards.get(card.board_id) or board
         lines = [card.title, *[f"• {t}" for t in card.takeaways[:3]]]
         if result.duplicate:
             lines.insert(0, "이미 올린 이미지라 기존 분석을 불러왔습니다.\n")
-        lines += ["", f"보드: {board.title}", self.card_url(card.board_id, card.id)]
-        return "\n".join(lines)
+        lines += ["", f"{BOARD_LINE}{current.title}", self.card_url(card.board_id, card.id)]
+        keyboard = _move_keyboard(card.id, await data.boards.list_all(), current.id)
+        if keyboard:
+            lines.append(f"\n{MOVE_HINT}")
+        return "\n".join(lines), keyboard or None
+
+    # --- inline buttons --------------------------------------------------------------
+
+    async def _callback(self, callback: dict[str, Any]) -> None:
+        callback_id = str(callback["id"])
+        link = await self.store.link_for_telegram(int(callback["from"]["id"]))
+        message = callback.get("message") or {}
+        if link is None or not message:
+            await self.client.answer_callback_query(callback_id, "웹 설정에서 먼저 연결해주세요.")
+            return
+        chat_id, message_id = int(message["chat"]["id"]), int(message["message_id"])
+        action, *ids = str(callback.get("data", "")).split(":")
+        try:
+            uuids = [_decode_id(i) for i in ids]
+        except ValueError:
+            uuids = []
+        data = sqlite_user_data(self.db, link.user_id)
+
+        if action == "m" and len(uuids) == 2:
+            await self._move_from_button(data, uuids[0], uuids[1], message, callback_id)
+        elif action == "d" and len(uuids) == 1:
+            board = await data.boards.get(uuids[0])
+            if board is None:
+                await self.client.answer_callback_query(callback_id, "보드를 찾을 수 없습니다.")
+                return
+            await self.store.set_default_board(link.user_id, board.id)
+            text, keyboard = _default_board_menu(await data.boards.list_all(), board.id)
+            await self.client.edit_message_text(chat_id, message_id, text, keyboard)
+            await self.client.answer_callback_query(callback_id, f"기본 보드: {board.title}")
+        else:
+            await self.client.answer_callback_query(callback_id, "알 수 없는 요청입니다.")
+
+    async def _move_from_button(
+        self,
+        data: UserData,
+        card_id: UUID,
+        board_id: UUID,
+        message: dict[str, Any],
+        callback_id: str,
+    ) -> None:
+        card = await data.cards.move(card_id, board_id)
+        board = await data.boards.get(board_id) if card else None
+        if card is None or board is None:
+            await self.client.answer_callback_query(callback_id, "카드나 보드를 찾을 수 없습니다.")
+            return
+        text = _rewrite_location(
+            str(message.get("text", "")), board.title, self.card_url(board.id, card.id)
+        )
+        keyboard = _move_keyboard(card.id, await data.boards.list_all(), board.id)
+        await self.client.edit_message_text(
+            int(message["chat"]["id"]), int(message["message_id"]), text, keyboard
+        )
+        await self.client.answer_callback_query(callback_id, f"'{board.title}'(으)로 옮겼습니다.")
 
     def card_url(self, board_id: UUID, card_id: UUID) -> str:
         return f"{self.public_base_url}/boards/{board_id}/cards/{card_id}"
@@ -251,3 +316,59 @@ async def _find_or_create_board(data: UserData, name: str) -> Board:
         if board.title.casefold() == title.casefold():
             return board
     return await data.boards.create(title)
+
+
+def _encode_id(value: UUID) -> str:
+    # callback_data is capped at 64 bytes, so UUIDs travel as 22-char base64.
+    return base64.urlsafe_b64encode(value.bytes).decode().rstrip("=")
+
+
+def _decode_id(value: str) -> UUID:
+    try:
+        return UUID(bytes=base64.urlsafe_b64decode(value + "=="))
+    except (ValueError, TypeError) as exc:
+        raise ValueError(value) from exc
+
+
+def _rows(buttons: list[dict[str, str]], per_row: int = 2) -> Keyboard:
+    return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
+
+
+def _move_keyboard(card_id: UUID, boards: list[Board], current: UUID) -> Keyboard:
+    others = [b for b in boards if b.id != current][:MAX_BOARD_BUTTONS]
+    return _rows(
+        [
+            {"text": b.title[:30], "callback_data": f"m:{_encode_id(card_id)}:{_encode_id(b.id)}"}
+            for b in others
+        ]
+    )
+
+
+def _default_board_menu(boards: list[Board], default: UUID | None) -> tuple[str, Keyboard]:
+    if not boards:
+        return "보드가 없습니다. /board 보드이름 으로 만들 수 있습니다.", []
+    current = next((b.title for b in boards if b.id == default), None)
+    text = (
+        f"기본 보드: {current or '없음 (Inbox에 저장)'}\n"
+        "아래에서 고르거나 /board 새이름 으로 새 보드를 만들 수 있습니다."
+    )
+    buttons = [
+        {
+            "text": ("✓ " if b.id == default else "") + b.title[:30],
+            "callback_data": f"d:{_encode_id(b.id)}",
+        }
+        for b in boards[: MAX_BOARD_BUTTONS * 2]
+    ]
+    return text, _rows(buttons)
+
+
+def _rewrite_location(text: str, board_title: str, url: str) -> str:
+    """Updates the board line and card link of an earlier analysis reply after a move."""
+    out = []
+    for line in text.split("\n"):
+        if line.startswith(BOARD_LINE):
+            line = f"{BOARD_LINE}{board_title}"
+        elif "/boards/" in line and "/cards/" in line:
+            line = url
+        out.append(line)
+    return "\n".join(out)

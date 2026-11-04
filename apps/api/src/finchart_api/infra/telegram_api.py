@@ -8,6 +8,7 @@ from typing import Any, Protocol
 import httpx
 
 API_BASE = "https://api.telegram.org"
+ALLOWED_UPDATES = ["message", "callback_query"]
 # httpx logs full request URLs (which contain the token) at INFO; keep it quiet.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -25,9 +26,18 @@ class TelegramFile:
     file_size: int | None
 
 
+# Inline keyboard rows: [[{"text": ..., "callback_data": ...}, ...], ...]
+Keyboard = list[list[dict[str, str]]]
+
+
 class TelegramClient(Protocol):
-    async def send_message(self, chat_id: int, text: str) -> int: ...
-    async def edit_message_text(self, chat_id: int, message_id: int, text: str) -> None: ...
+    async def send_message(
+        self, chat_id: int, text: str, keyboard: Keyboard | None = None
+    ) -> int: ...
+    async def edit_message_text(
+        self, chat_id: int, message_id: int, text: str, keyboard: Keyboard | None = None
+    ) -> None: ...
+    async def answer_callback_query(self, callback_query_id: str, text: str) -> None: ...
     async def get_file(self, file_id: str) -> TelegramFile: ...
     async def download_file(self, file_path: str, max_bytes: int) -> bytes: ...
 
@@ -51,20 +61,30 @@ class HttpTelegramClient:
             raise TelegramApiError(method, response.status_code, str(body.get("description", "")))
         return body["result"]
 
-    async def send_message(self, chat_id: int, text: str) -> int:
+    async def send_message(self, chat_id: int, text: str, keyboard: Keyboard | None = None) -> int:
         result = await self.call(
-            "sendMessage", chat_id=chat_id, text=text, link_preview_options={"is_disabled": True}
+            "sendMessage",
+            chat_id=chat_id,
+            text=text,
+            link_preview_options={"is_disabled": True},
+            **_markup(keyboard),
         )
         return int(result["message_id"])
 
-    async def edit_message_text(self, chat_id: int, message_id: int, text: str) -> None:
+    async def edit_message_text(
+        self, chat_id: int, message_id: int, text: str, keyboard: Keyboard | None = None
+    ) -> None:
         await self.call(
             "editMessageText",
             chat_id=chat_id,
             message_id=message_id,
             text=text,
             link_preview_options={"is_disabled": True},
+            **_markup(keyboard),
         )
+
+    async def answer_callback_query(self, callback_query_id: str, text: str) -> None:
+        await self.call("answerCallbackQuery", callback_query_id=callback_query_id, text=text)
 
     async def get_file(self, file_id: str) -> TelegramFile:
         result = await self.call("getFile", file_id=file_id)
@@ -89,7 +109,7 @@ class HttpTelegramClient:
         return b"".join(chunks)
 
     async def get_updates(self, offset: int | None, timeout: int) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"timeout": timeout, "allowed_updates": ["message"]}
+        params: dict[str, Any] = {"timeout": timeout, "allowed_updates": ALLOWED_UPDATES}
         if offset is not None:
             params["offset"] = offset
         result: list[dict[str, Any]] = await self.call("getUpdates", **params)
@@ -97,3 +117,7 @@ class HttpTelegramClient:
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+
+def _markup(keyboard: Keyboard | None) -> dict[str, Any]:
+    return {"reply_markup": {"inline_keyboard": keyboard}} if keyboard is not None else {}
