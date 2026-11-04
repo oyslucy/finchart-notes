@@ -217,16 +217,28 @@ def test_duplicate_hash_reuses_existing_analysis(api: Api) -> None:
     assert api.provider.calls == 1
 
 
-def test_reorder_changes_listing_order(api: Api) -> None:
+def test_new_cards_are_placed_first(api: Api) -> None:
     alice = api.user("alice")
     board_id = board(alice)
     ids = [upload(alice, board_id, png(i)).json()["card"]["id"] for i in range(3)]
 
-    r = alice.put(f"/api/boards/{board_id}/order", json={"card_ids": ids[::-1]})
+    listed = alice.get(f"/api/boards/{board_id}/cards").json()
+
+    assert [c["id"] for c in listed] == ids[::-1]
+    assert [c["position"] for c in listed] == [0, 1, 2]
+
+
+def test_reorder_changes_listing_order(api: Api) -> None:
+    alice = api.user("alice")
+    board_id = board(alice)
+    ids = [upload(alice, board_id, png(i)).json()["card"]["id"] for i in range(3)]
+    wanted = [ids[1], ids[0], ids[2]]
+
+    r = alice.put(f"/api/boards/{board_id}/order", json={"card_ids": wanted})
     listed = alice.get(f"/api/boards/{board_id}/cards").json()
 
     assert r.status_code == 204
-    assert [c["id"] for c in listed] == ids[::-1]
+    assert [c["id"] for c in listed] == wanted
     assert [c["position"] for c in listed] == [0, 1, 2]
 
 

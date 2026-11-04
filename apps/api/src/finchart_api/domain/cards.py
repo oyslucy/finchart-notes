@@ -51,7 +51,8 @@ async def create_card(
     new_card = NewCard(
         board_id=board_id,
         owner_id=data.owner_id,
-        position=await data.cards.next_position(board_id),
+        # Newest first: the latest upload is what the user wants to read next.
+        position=0,
         image_path=image_path,
         thumb_path=thumb_path,
         image_sha256=analyzed.sha256,

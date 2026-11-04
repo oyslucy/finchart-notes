@@ -222,18 +222,6 @@ class SqliteCards:
             "select * from cards where id = ? and owner_id = ?", (str(card_id), self._owner)
         )
 
-    async def next_position(self, board_id: UUID) -> int:
-        def op(conn: sqlite3.Connection) -> int:
-            row = conn.execute(
-                "select coalesce(max(position), -1) + 1 from cards"
-                " where board_id = ? and owner_id = ?",
-                (str(board_id), self._owner),
-            ).fetchone()
-            return int(row[0])
-
-        result: int = await self._db.run(op)
-        return result
-
     async def insert(self, card: NewCard) -> Card:
         card_id, created = str(uuid4()), _now()
         if str(card.owner_id) != self._owner:
@@ -246,6 +234,17 @@ class SqliteCards:
             ).fetchone()
             if not owns_board:
                 raise PermissionError("board not owned by caller")
+            if conn.execute(
+                "select 1 from cards where owner_id = ? and image_sha256 = ?",
+                (self._owner, card.image_sha256),
+            ).fetchone():
+                raise DuplicateCardError(card.image_sha256)
+            # Make room so the new card lands exactly at card.position (0 = front).
+            conn.execute(
+                "update cards set position = position + 1"
+                " where board_id = ? and owner_id = ? and position >= ?",
+                (str(card.board_id), self._owner, card.position),
+            )
             try:
                 row = conn.execute(
                     """insert into cards (id, board_id, owner_id, position, image_path,
