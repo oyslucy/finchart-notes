@@ -24,7 +24,7 @@ Oracle Cloud Always Free VM (VM.Standard.E2.1.Micro, RAM 1 GB)
 
 - 외부 서비스는 Gemini와 Oracle(VM, Object Storage) 두 곳뿐이다. 프론트, API, DB, 이미지, 로그인이 모두 VM 하나 안에 있다.
 - 프론트와 API는 같은 도메인을 쓴다. CORS가 없고, 세션 쿠키는 `SameSite=Lax`이며, 상태를 바꾸는 요청은 Origin 검사를 거친다.
-- PDF는 브라우저에서 인쇄용 CSS로 만든다. 1 GB VM에서는 서버 렌더러를 쓰지 않는다.
+- PDF는 브라우저에서 인쇄용 CSS로 만든다(`PrintBoard`). A4 한 장마다 보드 제목, 날짜, 쪽 번호와 카드 2장(차트 왼쪽, 해설 오른쪽)을 넣는다. 1 GB VM에서는 서버 렌더러를 쓰지 않는다.
 
 ## 요청 흐름: 카드 생성
 
@@ -68,13 +68,15 @@ sessions (token_hash pk, user_id → users, created_at, expires_at)   -- 토큰 
 boards   (id, owner_id → users, title, created_at)
 cards    (id, board_id → boards, owner_id → users, position, image_path, thumb_path,
           image_sha256, title, chart_type, period, takeaways json, interpretation,
-          caveats json, user_note, model, raw_response json, created_at,
+          caveats json, user_note, model, raw_response json, created_at, pinned_at,
           unique (owner_id, image_sha256))
 analysis_log (owner_id → users, created_at)   -- 하루 분석 한도 계산용, 카드를 지워도 남는다
 ```
 
 - 모든 보드와 카드 쿼리는 저장소 계층에서 `owner_id = 로그인 사용자`로 범위가 정해진다(`SqliteBoards`, `SqliteCards`). 다른 사람의 리소스는 존재하지 않는 것처럼 404로 응답한다.
 - 이미지 경로는 `<owner_id>/`로 시작해야 하고, 경로 조작(`..`)은 거부한다.
+- 정렬: 보드에서는 고정 카드(최근에 고정한 순) → `position` 순, 홈에서는 고정 카드 → 최신순으로 정렬한다. 새 카드는 `position` 0으로 들어가고 나머지는 하나씩 밀린다.
+- 스키마 변경은 `infra/sqlite.py`의 `_MIGRATIONS`에 한 줄씩 추가한다. 앱이 시작할 때 `pragma user_version`을 보고 필요한 것만 적용한다.
 - 외래 키 cascade로 보드를 지우면 카드 행도 함께 지워진다. 이미지 파일은 유스케이스에서 함께 지운다.
 
 ## 인증
@@ -98,9 +100,10 @@ analysis_log (owner_id → users, created_at)   -- 하루 분석 한도 계산�
 | GET | `/api/auth/me` | 현재 사용자 |
 | POST / GET | `/api/boards` | 보드 생성 / 내 보드 목록 |
 | PATCH / DELETE | `/api/boards/{id}` | 이름 수정 / 삭제 (카드와 이미지 포함) |
-| POST / GET | `/api/boards/{id}/cards` | 이미지 업로드 → 카드 생성 / 카드 목록 |
+| GET | `/api/cards?q=` | 최근 카드 (모든 보드). `q`를 주면 제목, 해설, 핵심 관찰, 주의, 기간, 메모, 보드 이름에서 키워드 검색 |
+| POST / GET | `/api/boards/{id}/cards` | 이미지 업로드 → 카드 생성 (맨 앞에 추가) / 카드 목록 (고정 카드 먼저) |
 | PUT | `/api/boards/{id}/order` | 카드 순서 변경 (`card_ids` 배열) |
-| PATCH / DELETE | `/api/cards/{id}` | 텍스트와 메모 수정 / 삭제 |
+| PATCH / DELETE | `/api/cards/{id}` | 텍스트, 메모, 고정(`pinned`) 수정 / 삭제 |
 | GET | `/api/images/{path}` | 카드 이미지 (소유자만) |
 
 ## 환경변수 (VM `~/finchart/.env`, 로컬 `apps/api/.env`)
