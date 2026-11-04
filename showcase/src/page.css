@@ -1,0 +1,8 @@
+:root {
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+  background: #fff;
+}
+body { margin: 0; }
+.page { display: flex; flex-direction: column; gap: 48px; max-width: 900px; margin: 40px auto; }
+.page a { display: block; margin-bottom: 8px; font: 13px system-ui; color: #666; }
+.capture { width: 760px; padding: 0; }

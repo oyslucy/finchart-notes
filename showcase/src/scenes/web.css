@@ -1,0 +1,379 @@
+/* finchart-notes web demo. Corner bleed: the browser sits one gutter in from the top
+   and runs off the right and bottom; the desktop shows on its left. */
+
+.wd .ss-stage {
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--ss-well);
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', system-ui, sans-serif;
+}
+
+.wd .wd-window {
+  position: absolute;
+  left: 176px;
+  top: 36px;
+  width: 640px;
+  height: 470px;
+  box-shadow: var(--ss-shadow-hero);
+}
+
+.wd .wd-body {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 20px;
+  background: var(--ss-surface);
+}
+
+/* ---- Upload bar with board chips ---- */
+
+.wd .wd-composer {
+  border: 1px solid var(--ss-line);
+  border-radius: 10px;
+  background: var(--ss-surface);
+  box-shadow: 0 1px 2px rgba(30, 25, 20, 0.04);
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* The bar lights up while a file is carried over it */
+.wd .wd-composer[data-over] {
+  border-color: var(--ss-accent);
+  background: color-mix(in srgb, var(--ss-accent) 5%, #fff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ss-accent) 22%, transparent);
+}
+
+.wd .wd-composer__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 16px;
+}
+
+.wd .wd-composer__icon {
+  flex: none;
+  color: var(--ss-icon-faint);
+}
+
+.wd .wd-composer__hint {
+  font-size: 14px;
+  color: var(--ss-text);
+}
+
+.wd .wd-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 14px;
+  border-top: 1px solid var(--ss-line);
+}
+
+.wd .wd-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--ss-line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ss-text);
+}
+
+.wd .wd-chip[data-on] {
+  border-color: var(--ss-accent);
+  background: color-mix(in srgb, var(--ss-accent) 8%, #fff);
+  color: var(--ss-accent);
+  font-weight: 600;
+}
+
+.wd .wd-label {
+  margin: 22px 0 0 2px;
+}
+
+/* ---- Cards: absolutely placed by slot so they can make room ---- */
+
+.wd .wd-card {
+  position: absolute;
+  width: 190px;
+  overflow: hidden;
+  border: 1px solid var(--ss-line);
+  border-radius: 10px;
+  background: var(--ss-surface);
+  transition:
+    left 0.65s cubic-bezier(0.45, 0, 0.1, 1),
+    top 0.65s cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+.wd .wd-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 130px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--ss-line);
+  background: var(--ss-canvas);
+}
+
+.wd .wd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 14px;
+  min-height: 34px;
+}
+
+/* The new card arrives whole: a fade and a short rise */
+.wd .wd-new {
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(10px);
+  box-shadow: var(--ss-shadow-card);
+  transition:
+    opacity 0.5s cubic-bezier(0.25, 0.8, 0.25, 1),
+    transform 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.wd .wd-new[data-show] {
+  opacity: 1;
+  transform: none;
+}
+
+.wd .wd-thumb--shot {
+  display: block;
+  background: #fff;
+}
+
+/* The screenshot fills the thumbnail, then zooms to the chart panel
+   (110, 40, 190, 160 in page px): scale 0.8125, centred. */
+.wd .wd-shot {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: 0 0;
+  transform: scale(0.5);
+  clip-path: inset(0 0 0 0 round 0);
+  transition:
+    transform 0.9s cubic-bezier(0.45, 0, 0.1, 1),
+    clip-path 0.9s cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+/* Zoomed: only the chart panel is left, as the stored crop is */
+.wd .wd-shot[data-crop='zoom'] {
+  transform: translate(-71.6px, -32.5px) scale(0.8125);
+  clip-path: inset(40px 80px 60px 110px round 4px);
+}
+
+.wd .wd-shot .wd-page {
+  transform: none !important;
+}
+
+/* The crop frame, drawn on the half-size page, dims everything outside it */
+.wd .wd-frame {
+  position: absolute;
+  left: 55px;
+  top: 20px;
+  width: 95px;
+  height: 80px;
+  border: 2px solid var(--ss-accent);
+  border-radius: 4px;
+  box-shadow: 0 0 0 200px rgba(255, 255, 255, 0);
+  opacity: 0;
+  transition:
+    opacity 0.35s ease,
+    box-shadow 0.35s ease;
+}
+
+.wd .wd-frame[data-crop='frame'] {
+  opacity: 1;
+  box-shadow: 0 0 0 200px rgba(255, 255, 255, 0.62);
+}
+
+.wd .wd-new .wd-text {
+  gap: 3px;
+}
+
+.wd .wd-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ss-text);
+  line-height: 1.35;
+}
+
+.wd .wd-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ss-text-strong);
+}
+
+.wd .wd-meta {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ss-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- The captured page (380 × 260) ---- */
+
+.wd .wd-page {
+  position: relative;
+  width: 380px;
+  height: 260px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  background: #f4f3f0;
+}
+
+.wd .wd-page__nav {
+  height: 22px;
+  background: #1f2a3c;
+}
+
+.wd .wd-page__article {
+  position: absolute;
+  left: 12px;
+  top: 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.wd .wd-page__article i {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: #d5d1cb;
+}
+
+.wd .wd-page__chart {
+  position: absolute;
+  left: 110px;
+  top: 40px;
+  width: 190px;
+  height: 160px;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #e2dfda;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.wd .wd-page__chart-title {
+  display: block;
+  width: 90px;
+  height: 8px;
+  margin-bottom: 12px;
+  border-radius: 3px;
+  background: #3b3835;
+}
+
+.wd .wd-page__ad {
+  position: absolute;
+  left: 312px;
+  top: 40px;
+  width: 56px;
+  height: 88px;
+  border-radius: 4px;
+  background: #f7dfa0;
+}
+
+.wd .wd-page__mini {
+  position: absolute;
+  left: 312px;
+  top: 140px;
+  width: 56px;
+  height: 60px;
+  box-sizing: border-box;
+  padding: 12px 2px 0;
+  border: 1px solid #e2dfda;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* ---- The file on the desktop ---- */
+
+.wd .wd-desk {
+  position: absolute;
+  left: 42px;
+  top: 148px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 96px;
+  transition: opacity 0.2s ease;
+}
+
+.wd .wd-desk[data-lifted] {
+  opacity: 0.45;
+}
+
+.wd .wd-desk__icon {
+  display: block;
+  width: 65px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.16),
+    0 2px 6px -2px rgba(0, 0, 0, 0.22);
+}
+
+.wd .wd-desk__name {
+  padding: 1px 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ss-text-strong);
+  white-space: nowrap;
+}
+
+/* ---- The drag image ---- */
+
+.wd .wd-drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+
+.wd .wd-drag[data-show] {
+  opacity: 0.88;
+}
+
+.wd .wd-drag__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 96px;
+  will-change: transform;
+}
+
+.wd .wd-drag[data-dropped] {
+  opacity: 0;
+  transition: opacity 0.22s ease-in;
+}
+
+.wd .wd-drag[data-dropped] .wd-drag__inner {
+  transform: scale(0.5);
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wd .wd-drag__name {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ss-accent);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}

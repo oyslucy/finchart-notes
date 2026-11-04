@@ -1,0 +1,271 @@
+/* Device pair: the board window pinned top-left, off the bottom; the phone straddles
+   its right edge over filler cards. One gutter (32px) for the window's top and left
+   and the phone's right. */
+
+.tgd .ss-stage {
+  --gutter: 32px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--ss-well);
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', system-ui, sans-serif;
+}
+
+.tgd .tgd-window {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--gutter);
+  width: 600px;
+  height: 470px;
+  box-shadow: var(--ss-shadow-hero);
+}
+
+.tgd .tgd-body {
+  position: relative;
+  overflow: hidden;
+  background: var(--ss-surface);
+}
+
+.tgd .tgd-board {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--ss-line);
+}
+
+.tgd .tgd-board__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ss-text-strong);
+}
+
+.tgd .tgd-card {
+  position: absolute;
+  width: 176px;
+  overflow: hidden;
+  border: 1px solid var(--ss-line);
+  border-radius: 10px;
+  background: var(--ss-surface);
+  transition:
+    left 0.65s cubic-bezier(0.45, 0, 0.1, 1),
+    top 0.65s cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+.tgd .tgd-thumb {
+  display: grid;
+  place-items: center;
+  height: 118px;
+  border-bottom: 1px solid var(--ss-line);
+  background: var(--ss-canvas);
+}
+
+.tgd .tgd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 14px;
+}
+
+/* A title over its meta reads as one item */
+.tgd .tgd-new .tgd-text,
+.tgd .tgd-fly .tgd-text {
+  gap: 3px;
+}
+
+.tgd .tgd-new {
+  z-index: 2;
+  opacity: 0;
+  box-shadow: var(--ss-shadow-card);
+}
+
+/* The flyer lands exactly on this card, which shows in the same set that removes it */
+.tgd .tgd-new[data-show] {
+  opacity: 1;
+  transition: opacity 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgd .tgd-thumb--new {
+  background: #fff;
+}
+
+.tgd .tgd-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ss-text-strong);
+}
+
+.tgd .tgd-meta {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ss-text);
+}
+
+.tgd .tgd-flywrap {
+  position: relative;
+  z-index: 5;
+  transition: opacity 0.3s ease;
+}
+
+.tgd .tgd-flywrap[data-out] {
+  opacity: 0;
+}
+
+/* The surface rides inside the Fly's scaled layer, so it grows with the chart */
+.tgd .tgd-fly__card {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--ss-shadow-lift);
+}
+
+/* ---- The phone: Telegram's light theme. Inside the phone 1px is 1pt. Its top sits
+   in the upper half and the stage crops its base: a short history reads from the
+   top of the pane, under the header, and the composer is filler. ---- */
+
+.tgd .tgd-phone {
+  position: absolute;
+  top: 56px;
+  right: var(--gutter);
+  box-shadow:
+    var(--ss-shadow-satellite),
+    0 30px 50px -20px rgba(50, 50, 93, 0.35);
+}
+
+.tgd .ss-phone__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.tgd .tgd-paper {
+  position: absolute;
+  inset: 0;
+  background: #dfe7cf;
+}
+
+.tgd .tgd-head {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* The nav bar runs up under the status bar, as iOS draws it */
+  padding: 54px 16px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+}
+
+.tgd .tgd-avatar {
+  flex: none;
+  background: linear-gradient(#8b80e8, #7266d6);
+  color: #fff;
+}
+
+.tgd .tgd-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #000;
+}
+
+.tgd .tgd-status {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8e8e93;
+}
+
+/* Telegram's bubbles through the kit's tokens: white received, pale green sent */
+.tgd .tgd-thread {
+  --ss-me: #e1fec6;
+  --ss-me-text: #000;
+  --ss-them: #fff;
+  --ss-them-text: #000;
+  position: relative;
+  z-index: 1;
+  /* As tall as its messages, so the history starts under the header */
+  flex: none;
+  gap: 4px;
+  padding: 12px 12px 8px;
+  font-size: 14px;
+}
+
+.tgd .tgd-line {
+  display: block;
+}
+
+.tgd .tgd-reply__title {
+  font-weight: 600;
+}
+
+.tgd .tgd-reply__board {
+  color: #6b6b70;
+}
+
+.tgd .tgd-photo__img {
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 96px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.tgd .tgd-caption {
+  display: block;
+  padding: 4px 2px 0;
+  color: #2f7fd1;
+}
+
+.tgd .tgd-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 80%;
+  animation: tgd-rise 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+
+.tgd .tgd-buttons span {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(70, 90, 60, 0.3);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tgd .tgd-compose {
+  position: relative;
+  z-index: 2;
+  padding: 6px 10px 34px;
+}
+
+.tgd .tgd-field {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: #fff;
+  color: #a1a1a6;
+  font-size: 15px;
+}
+
+@keyframes tgd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
