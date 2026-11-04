@@ -19,7 +19,7 @@ from finchart_api.domain.uploads import (
     validate_image_upload,
 )
 from finchart_api.http.deps import CurrentAccount, ServicesDep, UserDataDep
-from finchart_api.http.schemas import CardCreateOut, CardOut, OrderIn, RecentCardOut
+from finchart_api.http.schemas import CardCreateOut, CardOut, MoveIn, OrderIn, RecentCardOut
 from finchart_api.llm.base import VisionProviderError
 
 router = APIRouter(tags=["cards"])
@@ -119,6 +119,15 @@ async def update_card(card_id: UUID, body: CardPatch, data: UserDataDep) -> Card
     card = await data.cards.update(card_id, body)
     if card is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "card not found")
+    [out] = _with_urls(data, [card])
+    return out
+
+
+@router.post("/cards/{card_id}/move")
+async def move_card(card_id: UUID, body: MoveIn, data: UserDataDep) -> CardOut:
+    card = await data.cards.move(card_id, body.board_id)
+    if card is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "card or board not found")
     [out] = _with_urls(data, [card])
     return out
 

@@ -364,6 +364,34 @@ class SqliteCards:
             (str(card_id), self._owner),
         )
 
+    async def move(self, card_id: UUID, board_id: UUID) -> Card | None:
+        """Moves a card to the front of another board owned by the same user."""
+
+        def op(conn: sqlite3.Connection) -> Card | None:
+            owns_board = conn.execute(
+                "select 1 from boards where id = ? and owner_id = ?", (str(board_id), self._owner)
+            ).fetchone()
+            card = conn.execute(
+                "select board_id from cards where id = ? and owner_id = ?",
+                (str(card_id), self._owner),
+            ).fetchone()
+            if not owns_board or not card:
+                return None
+            if card["board_id"] != str(board_id):
+                conn.execute(
+                    "update cards set position = position + 1 where board_id = ? and owner_id = ?",
+                    (str(board_id), self._owner),
+                )
+                conn.execute(
+                    "update cards set board_id = ?, position = 0 where id = ? and owner_id = ?",
+                    (str(board_id), str(card_id), self._owner),
+                )
+            row = conn.execute("select * from cards where id = ?", (str(card_id),)).fetchone()
+            return _card(row)
+
+        result: Card | None = await self._db.run(op)
+        return result
+
     async def reorder(self, board_id: UUID, card_ids: Sequence[UUID]) -> None:
         wanted = [str(i) for i in card_ids]
 

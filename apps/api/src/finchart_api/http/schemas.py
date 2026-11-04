@@ -53,5 +53,9 @@ class CardCreateOut(BaseModel):
     duplicate: bool
 
 
+class MoveIn(BaseModel):
+    board_id: UUID
+
+
 class OrderIn(BaseModel):
     card_ids: list[UUID]

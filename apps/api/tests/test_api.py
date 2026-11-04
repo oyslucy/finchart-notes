@@ -469,3 +469,22 @@ def test_existing_database_is_migrated(tmp_path: Path) -> None:
         version = conn.execute("pragma user_version").fetchone()[0]
     assert "pinned_at" in columns and version == SCHEMA_VERSION
     assert alice.get("/api/boards").status_code == 200
+
+
+def test_move_card_to_another_board(api: Api) -> None:
+    alice, bob = api.user("alice"), api.user("bob")
+    source, target = board(alice, "원래"), board(alice, "옮길 곳")
+    existing = upload(alice, target, png(1)).json()["card"]["id"]
+    card_id = upload(alice, source, png(2)).json()["card"]["id"]
+
+    moved = alice.post(f"/api/cards/{card_id}/move", json={"board_id": target})
+
+    assert moved.status_code == 200 and moved.json()["board_id"] == target
+    listed = [c["id"] for c in alice.get(f"/api/boards/{target}/cards").json()]
+    assert listed == [card_id, existing]
+    assert alice.get(f"/api/boards/{source}/cards").json() == []
+    bobs_board = board(bob)
+    assert (
+        alice.post(f"/api/cards/{card_id}/move", json={"board_id": bobs_board}).status_code == 404
+    )
+    assert bob.post(f"/api/cards/{card_id}/move", json={"board_id": bobs_board}).status_code == 404
