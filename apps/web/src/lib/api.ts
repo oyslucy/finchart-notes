@@ -31,7 +31,23 @@ export interface Me {
   username: string
 }
 
+export interface TelegramStatus {
+  enabled: boolean
+  linked: boolean
+  telegram_username: string | null
+  bot_username: string | null
+}
+
+export interface TelegramLinkToken {
+  url: string
+  expires_at: string
+}
+
 export const api = {
+  telegramStatus: () => request<TelegramStatus>('/telegram/status'),
+  telegramLinkToken: () => request<TelegramLinkToken>('/telegram/link-token', { method: 'POST' }),
+  telegramUnlink: () => request<undefined>('/telegram/link', { method: 'DELETE' }),
+
   me: () => request<Me>('/auth/me'),
   signup: (username: string, password: string) =>
     request<Me>('/auth/signup', { method: 'POST', body: JSON.stringify({ username, password }) }),

@@ -6,6 +6,7 @@ import CardDetailPage from '../pages/CardDetailPage.tsx'
 import DesignPage from '../pages/DesignPage.tsx'
 import HomePage from '../pages/HomePage.tsx'
 import LoginPage from '../pages/LoginPage.tsx'
+import SettingsPage from '../pages/SettingsPage.tsx'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'boards/:boardId', element: <BoardPage /> },
       { path: 'boards/:boardId/cards/:cardId', element: <CardDetailPage /> },
+      { path: 'settings', element: <SettingsPage /> },
     ],
   },
 ])
