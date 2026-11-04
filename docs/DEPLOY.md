@@ -53,7 +53,7 @@ python3 scripts/set_webhook.py info --env-file apps/api/.env    # 상태와 마�
 python3 scripts/set_webhook.py delete --env-file apps/api/.env  # 해제
 ```
 
-- `setWebhook`에는 `secret_token`과 `allowed_updates=["message"]`를 넣는다. 서버는 헤더가 다르면 403을 반환한다.
+- `setWebhook`에는 `secret_token`과 `allowed_updates=["message", "callback_query"]`를 넣는다. 서버는 헤더가 다르면 403을 반환한다.
 - `info`의 `pending_update_count`와 `last_error_message`로 전달 실패를 확인한다.
 
 ### 로컬 개발 (공개 URL 없이)

@@ -66,7 +66,7 @@ def main() -> None:
             {
                 "url": base + WEBHOOK_PATH,
                 "secret_token": secret,
-                "allowed_updates": ["message"],
+                "allowed_updates": ["message", "callback_query"],
                 "max_connections": 5,
             },
         )
