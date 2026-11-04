@@ -30,8 +30,8 @@ Oracle Cloud Always Free VM (VM.Standard.E2.1.Micro, RAM 1 GB)
 
 `POST /api/boards/{board_id}/cards` (multipart `image`)
 
-1. **인증**: `finchart_session` 쿠키로 세션을 찾는다. 세션이 없으면 401, 아이디가 `ALLOWED_USERNAMES`에 없으면 403.
-2. **제한**: 사용자별 분당 업로드 수(메모리 기반)를 확인한다. 파일은 10 MB 이하, `image/png|jpeg|webp`만 받는다(헤더와 실제 바이트를 모두 검사).
+1. **인증**: `finchart_session` 쿠키로 세션을 찾는다. 세션이 없으면 401. `ALLOWED_USERNAMES`가 설정돼 있고 아이디가 목록에 없으면 403.
+2. **제한**: 사용자별 분당 업로드 수(메모리 기반)와 하루 분석 장수(`analysis_log` 기준, 카드를 지워도 줄지 않음)를 확인한다. 중복 이미지는 분석하지 않으므로 하루 한도에 포함되지 않는다. 파일은 10 MB 이하, `image/png|jpeg|webp`만 받는다(헤더와 실제 바이트를 모두 검사).
 3. **해시 확인**: 원본 바이트의 SHA-256으로 `(owner_id, image_sha256)`를 찾는다. 이미 있으면 **분석을 생략**하고 기존 카드를 `duplicate: true`로 반환한다.
 4. **VLM 분석**: `VisionProvider.analyze(image_bytes)` → `ChartAnalysis`(bbox, title, chart_type, period, takeaways, interpretation, caveats). Gemini가 429나 5xx를 반환하면 지수 백오프로 최대 3회 재시도하고, 그래도 실패하면 폴백 모델을 쓴다.
 5. **크롭**: 0~1000으로 정규화된 bbox를 픽셀로 바꾸고, 축 라벨이 잘리지 않도록 0.8% 여백을 둔다. 크롭 영역이 너무 작거나 원본의 90% 이상이면 원본 전체를 쓴다. EXIF를 제거하고 WebP로 저장하며, 썸네일(긴 변 480px)도 만든다. 카드 한 장은 보통 30~50 KB다.
@@ -63,13 +63,14 @@ deploy/                compose.yml, Caddyfile, restore.sh (VM의 ~/finchart로 �
 ## 데이터 모델 (SQLite)
 
 ```sql
-users    (id, username unique, password_hash, created_at)
+users        (id, username unique, password_hash, created_at)
 sessions (token_hash pk, user_id → users, created_at, expires_at)   -- 토큰 원문은 저장하지 않는다
 boards   (id, owner_id → users, title, created_at)
 cards    (id, board_id → boards, owner_id → users, position, image_path, thumb_path,
           image_sha256, title, chart_type, period, takeaways json, interpretation,
           caveats json, user_note, model, raw_response json, created_at,
           unique (owner_id, image_sha256))
+analysis_log (owner_id → users, created_at)   -- 하루 분석 한도 계산용, 카드를 지워도 남는다
 ```
 
 - 모든 보드와 카드 쿼리는 저장소 계층에서 `owner_id = 로그인 사용자`로 범위가 정해진다(`SqliteBoards`, `SqliteCards`). 다른 사람의 리소스는 존재하지 않는 것처럼 404로 응답한다.
@@ -81,7 +82,8 @@ cards    (id, board_id → boards, owner_id → users, position, image_path, thu
 - 아이디(영문 소문자, 숫자, `_`, 3~20자)와 비밀번호(8~128자)로 가입하고 로그인한다.
 - 비밀번호는 argon2id로 해시한다. 없는 아이디로 로그인해도 같은 시간이 걸리도록 더미 해시로 검증한다.
 - 세션은 무작위 토큰이고, DB에는 SHA-256 해시만 저장한다. 30일 동안 유효하다. 쿠키는 `HttpOnly`, `SameSite=Lax`, 운영 환경에서는 `Secure`다.
-- 가입과 로그인 모두 `ALLOWED_USERNAMES`에 있는 아이디만 가능하다. 목록에서 빠지면 기존 세션도 403을 받는다.
+- 기본은 **누구나 가입할 수 있다.** `ALLOWED_USERNAMES`를 설정하면 그 목록에 있는 아이디만 가입하고 로그인할 수 있고, 목록에서 빠지면 기존 세션도 403을 받는다.
+- 공개 가입이므로 남용을 막는 장치가 있다: 같은 IP에서 시간당 가입 5회, 계정별 하루 분석 30장(Gemini 무료 한도를 여러 사용자가 나눠 쓰기 때문).
 - 로그인 시도는 IP와 아이디 조합별로 분당 10회로 제한한다.
 - 비밀번호 재설정 메일은 없다. 잊어버리면 VM에서 계정을 지우고 다시 가입한다.
 
@@ -106,7 +108,7 @@ cards    (id, board_id → boards, owner_id → users, position, image_path, thu
 | 이름 | 필수 | 기본값 | 설명 |
 |---|---|---|---|
 | `GEMINI_API_KEY` | O | | AI Studio에서 발급 |
-| `ALLOWED_USERNAMES` | O | | 가입하고 로그인할 수 있는 아이디 (쉼표로 구분) |
+| `ALLOWED_USERNAMES` | | (비어 있음 = 누구나) | 설정하면 이 아이디만 가입하고 로그인할 수 있다 (쉼표로 구분) |
 | `GEMINI_MODEL` | | `gemini-3.5-flash-lite` | 기본 모델 |
 | `GEMINI_FALLBACK_MODEL` | | `gemini-3.1-flash-lite` | 재시도 후 쓰는 폴백 |
 | `LLM_PROVIDER` | | `gemini` | `claude_cli`는 로컬 전용 |
@@ -114,6 +116,8 @@ cards    (id, board_id → boards, owner_id → users, position, image_path, thu
 | `DATA_DIR` | | `data` | compose가 `/data`로 설정한다 |
 | `BACKUP_BUCKET` | | `finchart-backups` | Object Storage 버킷 이름 |
 | `RATE_LIMIT_PER_MINUTE` | | `10` | 사용자별 분당 업로드 수 |
+| `DAILY_ANALYSES_PER_USER` | | `30` | 사용자별 하루 분석 장수 (UTC 자정 기준) |
+| `SIGNUPS_PER_IP_PER_HOUR` | | `5` | IP별 시간당 가입 수 |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | | `10` | IP와 아이디별 분당 로그인 시도 수 |
 | `MAX_UPLOAD_BYTES` | | `10485760` | 10 MB |
 
@@ -141,7 +145,7 @@ cards    (id, board_id → boards, owner_id → users, position, image_path, thu
 ## 로컬 실행
 
 ```bash
-cp .env.example apps/api/.env      # GEMINI_API_KEY, ALLOWED_USERNAMES 채우기
+cp .env.example apps/api/.env      # GEMINI_API_KEY 채우기
 
 # API (http://127.0.0.1:8000, 문서: /api/docs). 데이터는 apps/api/data/
 cd apps/api && uv sync && uv run finchart-api

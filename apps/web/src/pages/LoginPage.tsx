@@ -22,7 +22,7 @@ function authErrorMessage(error: unknown): string {
   if (error.status === 401) return '아이디 또는 비밀번호가 맞지 않습니다.'
   if (error.status === 403) return '사용이 허용되지 않은 아이디입니다.'
   if (error.status === 409) return '이미 사용 중인 아이디입니다.'
-  if (error.status === 429) return '시도가 너무 많습니다. 1분 뒤 다시 시도해 주세요.'
+  if (error.status === 429) return '시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.'
   if (error.status === 422) return '아이디와 비밀번호 조건을 확인해 주세요.'
   return error.message
 }
