@@ -18,7 +18,15 @@ function isTyping(target: EventTarget | null): boolean {
   )
 }
 
-export function UploadZone({ onFiles, busy }: { onFiles: (files: File[]) => void; busy: boolean }) {
+interface UploadZoneProps {
+  onFiles: (files: File[]) => void
+  busy: boolean
+  /** "bare" drops the frame so the zone can sit inside another panel. */
+  variant?: 'framed' | 'bare'
+  hint?: string
+}
+
+export function UploadZone({ onFiles, busy, variant = 'framed', hint }: UploadZoneProps) {
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -56,16 +64,25 @@ export function UploadZone({ onFiles, busy }: { onFiles: (files: File[]) => void
       }}
       onDrop={onDrop}
       className={cx(
-        'flex items-center justify-between gap-4 rounded-lg border px-4 py-3.5 transition-colors duration-150',
-        dragging ? 'border-accent bg-accent-subtle' : 'border-border bg-surface',
+        'flex items-center justify-between gap-4 px-4 py-3.5 transition-colors duration-150',
+        variant === 'framed' ? 'rounded-lg border' : 'rounded-t-lg',
+        dragging
+          ? 'border-accent bg-accent-subtle'
+          : variant === 'framed'
+            ? 'border-border bg-surface'
+            : 'bg-transparent',
       )}
     >
       <div className="flex items-center gap-3 text-[14px] text-text-muted">
         <span className="text-text-faint">
           <Icon icon={ImageUp} size={20} />
         </span>
-        <span>
-          스크린샷을 끌어다 놓거나 <Kbd>⌘</Kbd> <Kbd>V</Kbd> 로 붙여넣기
+        <span className="flex flex-col">
+          <span className="hidden sm:inline">
+            스크린샷을 끌어다 놓거나 <Kbd>⌘</Kbd> <Kbd>V</Kbd> 로 붙여넣기
+          </span>
+          <span className="sm:hidden">차트 스크린샷을 골라 올려 주세요</span>
+          {hint && <span className="text-[12px] text-text-faint">{hint}</span>}
         </span>
       </div>
       <button

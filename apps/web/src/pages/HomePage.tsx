@@ -1,16 +1,69 @@
 import { Search, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Icon } from '../components/ui/Icon.tsx'
 import { Kbd } from '../components/ui/Kbd.tsx'
+import { useToast } from '../components/ui/toast-context.ts'
 import { useBoards } from '../features/boards/queries.ts'
-import { useRecentCards } from '../features/cards/queries.ts'
+import { HomeComposer } from '../features/cards/HomeComposer.tsx'
+import { useQuickUpload, useRecentCards } from '../features/cards/queries.ts'
 import {
   THUMBNAIL_GRID as GRID,
   ThumbnailCard,
   ThumbnailSkeleton,
 } from '../features/cards/ThumbnailCard.tsx'
+import { errorMessage } from '../lib/api.ts'
 import { useDebounced } from '../lib/useDebounced.ts'
+
+const BOARD_KEY = 'finchart-home-board'
+
+function readStoredBoard(): string | null {
+  try {
+    return localStorage.getItem(BOARD_KEY)
+  } catch {
+    return null
+  }
+}
+
+/** Uploads files one after another to the chosen board and tracks how many are left. */
+function useComposerUploads(boardId: string | null, onBoardCreated: (id: string) => void) {
+  const upload = useQuickUpload()
+  const toast = useToast()
+  const [pending, setPending] = useState(0)
+
+  const onFiles = useCallback(
+    (files: File[]) => {
+      setPending((n) => n + files.length)
+      let target = boardId
+      void files.reduce(async (previous, file) => {
+        await previous
+        try {
+          const { target: used, result } = await upload.mutateAsync({ boardId: target, file })
+          if (target !== used) {
+            target = used
+            onBoardCreated(used)
+          }
+          toast(
+            result.duplicate
+              ? { title: '이미 올린 이미지라 기존 분석을 불러왔습니다' }
+              : { title: '카드를 추가했습니다', description: result.card.title, tone: 'success' },
+          )
+        } catch (error) {
+          toast({
+            title: `${file.name} 분석 실패`,
+            description: errorMessage(error),
+            tone: 'danger',
+          })
+        } finally {
+          setPending((n) => n - 1)
+        }
+      }, Promise.resolve())
+    },
+    [boardId, upload, toast, onBoardCreated],
+  )
+
+  return { onFiles, pending }
+}
 
 function isTyping(target: EventTarget | null): boolean {
   return (
@@ -25,6 +78,18 @@ export default function HomePage() {
   const query = useDebounced(input.trim(), 250)
   const cards = useRecentCards(query)
   const searchRef = useRef<HTMLInputElement>(null)
+  const [storedBoard, setStoredBoard] = useState(readStoredBoard)
+  const boardList = boards.data ?? []
+  const selectedBoard = boardList.find((b) => b.id === storedBoard)?.id ?? boardList[0]?.id ?? null
+  const selectBoard = useCallback((id: string) => {
+    setStoredBoard(id)
+    try {
+      localStorage.setItem(BOARD_KEY, id)
+    } catch {
+      // Not persisted in private mode; the choice still applies for this visit.
+    }
+  }, [])
+  const { onFiles, pending } = useComposerUploads(selectedBoard, selectBoard)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -92,6 +157,18 @@ export default function HomePage() {
         </div>
       </header>
 
+      <HomeComposer
+        boards={boardList}
+        selectedId={selectedBoard}
+        onSelect={selectBoard}
+        onFiles={onFiles}
+        busy={pending > 0}
+      />
+
+      <h2 className="-mb-2 text-[15px] text-text-secondary">
+        {searching ? '검색 결과' : '최근 카드'}
+      </h2>
+
       {cards.isPending && (
         <ul className={GRID}>
           {Array.from({ length: 8 }, (_, i) => (
@@ -104,15 +181,22 @@ export default function HomePage() {
         <p className="text-[14px] text-danger">카드를 불러오지 못했습니다. {cards.error.message}</p>
       )}
 
-      {cards.isSuccess && count === 0 && (
+      {cards.isSuccess && count === 0 && pending === 0 && (
         <EmptyState
           searching={searching}
           hasBoards={boards.isPending || (boards.data?.length ?? 0) > 0}
         />
       )}
 
-      {cards.isSuccess && count > 0 && (
+      {cards.isSuccess && (count > 0 || pending > 0) && (
         <ul className={GRID}>
+          {!searching &&
+            Array.from({ length: pending }, (_, i) => (
+              <ThumbnailSkeleton
+                key={`pending-${String(i)}`}
+                label={i === 0 ? '분석 중' : '대기 중'}
+              />
+            ))}
           {cards.data.map((card, index) => (
             <ThumbnailCard key={card.id} card={card} index={index} boardTitle={card.board_title} />
           ))}
@@ -129,13 +213,13 @@ function EmptyState({ searching, hasBoards }: { searching: boolean; hasBoards: b
         '다른 단어로 찾아보세요. 제목, 해설, 핵심 관찰, 메모, 보드 이름에서 찾습니다.',
       ]
     : hasBoards
-      ? ['아직 카드가 없습니다', '왼쪽에서 보드를 열고 차트 스크린샷을 올려보세요.']
+      ? ['아직 카드가 없습니다', '위에서 보드를 고르고 차트 스크린샷을 올려보세요.']
       : [
-          '첫 보드를 만들어 보세요',
-          '왼쪽 사이드바의 ‘새 보드’를 눌러 주제별로 차트를 모아 보세요. 예: 2026 4분기 매크로',
+          '첫 스크린샷을 올려보세요',
+          '위 칸에 끌어다 놓거나 붙여넣으면 됩니다. 보드가 없으면 Inbox를 만들어 저장합니다.',
         ]
   return (
-    <div className="mx-auto flex max-w-[420px] flex-col gap-2 pt-20 text-center">
+    <div className="mx-auto flex max-w-[420px] flex-col gap-2 pt-12 text-center">
       <h2 className="text-[20px]">{title}</h2>
       <p className="text-[14px] text-text-muted">{body}</p>
     </div>
