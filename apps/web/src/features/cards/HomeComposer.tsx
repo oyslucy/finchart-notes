@@ -8,6 +8,7 @@ import { errorMessage } from '../../lib/api.ts'
 import type { Board } from '../../lib/types.ts'
 import { useCreateBoard } from '../boards/queries.ts'
 import { UploadZone } from './UploadZone.tsx'
+import { useBoardDrop } from './useBoardDrop.ts'
 
 interface HomeComposerProps {
   boards: Board[]
@@ -41,32 +42,52 @@ export function HomeComposer({ boards, selectedId, onSelect, onFiles, busy }: Ho
         className="flex [scrollbar-width:none] items-center gap-1.5 overflow-x-auto border-t border-border px-4 py-2.5"
       >
         <span className="mr-1 shrink-0 text-[12px] text-text-faint">저장할 보드</span>
-        {boards.map((board) => {
-          const active = board.id === selectedId
-          return (
-            <button
-              key={board.id}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => {
-                onSelect(board.id)
-              }}
-              className={cx(
-                chip,
-                active
-                  ? 'border-accent bg-accent-subtle font-medium text-accent'
-                  : 'border-border text-text-secondary hover:border-border-strong hover:text-text',
-              )}
-            >
-              {active && <Icon icon={Check} size={14} />}
-              {board.title}
-            </button>
-          )
-        })}
+        {boards.map((board) => (
+          <BoardChip
+            key={board.id}
+            board={board}
+            active={board.id === selectedId}
+            onSelect={onSelect}
+          />
+        ))}
         <NewBoardChip onCreated={onSelect} />
       </div>
     </section>
+  )
+}
+
+/** Selects the upload target; also a drop target for dragged cards. */
+function BoardChip({
+  board,
+  active,
+  onSelect,
+}: {
+  board: Board
+  active: boolean
+  onSelect: (boardId: string) => void
+}) {
+  const { over, handlers } = useBoardDrop(board)
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={() => {
+        onSelect(board.id)
+      }}
+      {...handlers}
+      className={cx(
+        chip,
+        over
+          ? 'border-accent bg-accent-subtle text-accent ring-2 ring-[var(--focus-ring)]'
+          : active
+            ? 'border-accent bg-accent-subtle font-medium text-accent'
+            : 'border-border text-text-secondary hover:border-border-strong hover:text-text',
+      )}
+    >
+      {active && <Icon icon={Check} size={14} />}
+      {board.title}
+    </button>
   )
 }
 

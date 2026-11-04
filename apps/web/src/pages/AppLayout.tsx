@@ -13,7 +13,12 @@ import { useToast } from '../components/ui/toast-context.ts'
 import { durations, easeOut, fade } from '../design/motion.ts'
 import { useMe, useSignOut } from '../features/auth/session.ts'
 import { useBoards, useCreateBoard } from '../features/boards/queries.ts'
+import { CardDragProvider } from '../features/cards/CardDragProvider.tsx'
+import { MoveDock } from '../features/cards/MoveDock.tsx'
+import { useBoardDrop } from '../features/cards/useBoardDrop.ts'
+import { cx } from '../design/cx.ts'
 import { errorMessage } from '../lib/api.ts'
+import type { Board } from '../lib/types.ts'
 
 export default function AppLayout() {
   const me = useMe()
@@ -22,18 +27,21 @@ export default function AppLayout() {
   if (!me.data) return <Navigate to="/login" replace />
 
   return (
-    <div className="flex min-h-dvh flex-col md:flex-row">
-      <MobileBar username={me.data.username} />
-      <aside
-        data-print-hide
-        className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col border-r border-border bg-bg-subtle px-2.5 py-3 md:flex"
-      >
-        <SidebarContent username={me.data.username} />
-      </aside>
-      <main className="min-w-0 flex-1">
-        <Outlet />
-      </main>
-    </div>
+    <CardDragProvider>
+      <div className="flex min-h-dvh flex-col md:flex-row">
+        <MobileBar username={me.data.username} />
+        <aside
+          data-print-hide
+          className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col border-r border-border bg-bg-subtle px-2.5 py-3 md:flex"
+        >
+          <SidebarContent username={me.data.username} />
+        </aside>
+        <main className="min-w-0 flex-1">
+          <Outlet />
+        </main>
+        <MoveDock />
+      </div>
+    </CardDragProvider>
   )
 }
 
@@ -122,15 +130,7 @@ function SidebarContent({ username }: { username: string }) {
           {boards.isPending &&
             [0, 1, 2].map((i) => <Skeleton key={i} className="mx-2 my-1.5 h-4" />)}
           {boards.data?.map((board) => (
-            <SidebarItem
-              key={board.id}
-              href={`/boards/${board.id}`}
-              icon={LayoutGrid}
-              active={board.id === boardId}
-              asLink
-            >
-              {board.title}
-            </SidebarItem>
+            <BoardNavItem key={board.id} board={board} active={board.id === boardId} />
           ))}
           {creating ? (
             <NewBoardForm
@@ -164,6 +164,26 @@ function SidebarContent({ username }: { username: string }) {
         />
       </div>
     </>
+  )
+}
+
+/** A sidebar board that also accepts dragged cards. */
+function BoardNavItem({ board, active }: { board: Board; active: boolean }) {
+  const { over, accepts, handlers } = useBoardDrop(board)
+  return (
+    <SidebarItem
+      href={`/boards/${board.id}`}
+      icon={LayoutGrid}
+      active={active}
+      asLink
+      {...handlers}
+      className={cx(
+        accepts && 'outline-1 outline-border-strong outline-dashed',
+        over && 'bg-accent-subtle text-accent outline-accent',
+      )}
+    >
+      {board.title}
+    </SidebarItem>
   )
 }
 

@@ -53,6 +53,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                     </Primitive.Description>
                   )}
                 </div>
+                {item.action && (
+                  <Primitive.Action
+                    altText={item.action.label}
+                    onClick={item.action.onClick}
+                    className="shrink-0 rounded-sm px-2 py-0.5 text-[13px] font-medium text-accent hover:bg-accent-subtle"
+                  >
+                    {item.action.label}
+                  </Primitive.Action>
+                )}
                 <Primitive.Close
                   aria-label="알림 닫기"
                   className="-mt-0.5 -mr-1 inline-flex size-6 items-center justify-center rounded-sm text-text-faint hover:bg-bg-muted hover:text-text"

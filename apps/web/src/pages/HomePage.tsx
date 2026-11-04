@@ -140,6 +140,11 @@ export default function HomePage() {
               {count}장
             </span>
           )}
+          {count > 0 && (
+            <span className="ml-auto hidden text-[12px] text-text-faint md:inline">
+              카드를 끌어 다른 보드에 놓으면 옮겨집니다
+            </span>
+          )}
         </h2>
 
         {cards.isPending && (

@@ -56,6 +56,8 @@ export function UploadZone({ onFiles, busy, variant = 'framed', hint }: UploadZo
     <div
       data-print-hide
       onDragOver={(e) => {
+        // Only files; cards being dragged between boards must not light this up.
+        if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
         setDragging(true)
       }}

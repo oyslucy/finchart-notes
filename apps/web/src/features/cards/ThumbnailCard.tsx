@@ -6,6 +6,8 @@ import { Icon } from '../../components/ui/Icon.tsx'
 import { appearTransition } from '../../design/motion.ts'
 import { CHART_TYPE_LABEL, type Card } from '../../lib/types.ts'
 import { CardActionsMenu } from './CardActions.tsx'
+import { CARD_DRAG_TYPE, useCardDrag } from './drag-context.ts'
+import { cx } from '../../design/cx.ts'
 
 const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' })
 
@@ -16,6 +18,8 @@ interface ThumbnailCardProps {
 }
 
 export function ThumbnailCard({ card, index, boardTitle }: ThumbnailCardProps) {
+  const drag = useCardDrag()
+  const dragging = drag.card?.id === card.id
   return (
     <motion.li
       layout
@@ -27,7 +31,21 @@ export function ThumbnailCard({ card, index, boardTitle }: ThumbnailCardProps) {
     >
       <Link
         to={`/boards/${card.board_id}/cards/${card.id}`}
-        className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-xs"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(CARD_DRAG_TYPE, card.id)
+          event.dataTransfer.effectAllowed = 'move'
+          drag.start(card)
+        }}
+        onDragEnd={() => {
+          drag.end()
+        }}
+        title="끌어서 다른 보드로 옮길 수 있습니다"
+        className={cx(
+          'flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface',
+          'transition-[border-color,box-shadow,opacity] duration-150 hover:border-border-strong hover:shadow-xs',
+          dragging && 'opacity-40',
+        )}
       >
         <div className="relative aspect-[4/3] overflow-hidden border-b border-border bg-bg-subtle">
           {/* Absolutely positioned so tall crops never stretch the 4:3 frame. */}
@@ -35,6 +53,7 @@ export function ThumbnailCard({ card, index, boardTitle }: ThumbnailCardProps) {
             src={card.thumb_url}
             alt={card.title}
             loading="lazy"
+            draggable={false}
             className="absolute inset-2 size-[calc(100%-1rem)] object-contain"
           />
           {card.pinned && (

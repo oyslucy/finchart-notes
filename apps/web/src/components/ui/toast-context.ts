@@ -6,6 +6,8 @@ export interface ToastInput {
   title: string
   description?: string
   tone?: ToastTone
+  /** e.g. "되돌리기"; the toast closes after the action runs. */
+  action?: { label: string; onClick: () => void }
 }
 
 export const ToastContext = createContext<((toast: ToastInput) => void) | null>(null)
