@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Annotated
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 
@@ -8,9 +8,13 @@ from finchart_api.domain.ports import UserData
 from finchart_api.http.ratelimit import RateLimiter
 from finchart_api.infra.accounts import Account, Accounts
 from finchart_api.infra.sqlite import Database, sqlite_user_data
+from finchart_api.infra.telegram_store import TelegramStore
 from finchart_api.llm.base import VisionProvider
 
 SESSION_COOKIE = "finchart_session"
+
+if TYPE_CHECKING:
+    from finchart_api.telegram.bot import TelegramBot
 
 
 @dataclass
@@ -22,6 +26,9 @@ class Services:
     upload_limiter: RateLimiter
     login_limiter: RateLimiter
     signup_limiter: RateLimiter
+    telegram_store: TelegramStore
+    # None when the bot token/username are not configured.
+    telegram: "TelegramBot | None" = field(default=None)
 
 
 def get_services(request: Request) -> Services:
