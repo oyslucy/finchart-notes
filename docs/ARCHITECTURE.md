@@ -19,6 +19,7 @@ Oracle Cloud Always Free VM (VM.Standard.E2.1.Micro, RAM 1 GB)
        volume app_data:/data ── finchart.db (SQLite), images/<user_id>/*.webp
                     │
                     ├──▶ Gemini API (VLM, 무료 티어)
+                    ├──◀ Telegram Bot API (웹훅 수신, 메시지 전송, 파일 다운로드)
                     └──▶ Oracle Object Storage  finchart-backups 버킷 (7일 보관)
 ```
 
@@ -55,6 +56,8 @@ apps/api/src/finchart_api/
     sqlite.py          스키마, 사용자별로 범위가 정해진 보드/카드 저장소, 파일 스토리지
     accounts.py        계정(argon2 비밀번호 해시)과 세션
   backup.py            백업/복구 (Object Storage, instance principal)
+  telegram/            텔레그램 봇 (업데이트 처리, 로컬용 폴링). 카드 생성은 domain/cards.py를 그대로 호출
+  infra/telegram_*.py  Bot API 클라이언트, 연결/토큰/업데이트 저장소
   http/                라우터(auth, boards, cards, images, health), 의존성, 레이트 리밋, Origin 검사
 apps/web/              React + Vite + TS + Tailwind v4 + Motion + TanStack Query + React Router
 deploy/                compose.yml, Caddyfile, restore.sh (VM의 ~/finchart로 복사됨)
@@ -71,6 +74,10 @@ cards    (id, board_id → boards, owner_id → users, position, image_path, thu
           caveats json, user_note, model, raw_response json, created_at, pinned_at,
           unique (owner_id, image_sha256))
 analysis_log (owner_id → users, created_at)   -- 하루 분석 한도 계산용, 카드를 지워도 남는다
+telegram_links       (user_id pk → users, telegram_user_id unique, chat_id, telegram_username,
+                      default_board_id → boards, created_at)
+telegram_link_tokens (token_hash pk, user_id → users, created_at, expires_at, used_at)  -- 해시만 저장
+telegram_updates     (update_id pk, received_at)   -- 웹훅 재전송 멱등성, 7일 보관
 ```
 
 - 모든 보드와 카드 쿼리는 저장소 계층에서 `owner_id = 로그인 사용자`로 범위가 정해진다(`SqliteBoards`, `SqliteCards`). 다른 사람의 리소스는 존재하지 않는 것처럼 404로 응답한다.
@@ -105,6 +112,10 @@ analysis_log (owner_id → users, created_at)   -- 하루 분석 한도 계산�
 | PUT | `/api/boards/{id}/order` | 카드 순서 변경 (`card_ids` 배열) |
 | PATCH / DELETE | `/api/cards/{id}` | 텍스트, 메모, 고정(`pinned`) 수정 / 삭제 |
 | GET | `/api/images/{path}` | 카드 이미지 (소유자만) |
+| POST | `/api/telegram/link-token` | 1회용 연결 링크 `https://t.me/<봇>?start=<토큰>` 발급 (10분) |
+| GET | `/api/telegram/status` | 연결 여부, 연결된 텔레그램 아이디 |
+| DELETE | `/api/telegram/link` | 연결 해제 |
+| POST | `/api/telegram/webhook` | Telegram 웹훅. `X-Telegram-Bot-Api-Secret-Token`이 일치해야 한다 |
 
 ## 환경변수 (VM `~/finchart/.env`, 로컬 `apps/api/.env`)
 
@@ -124,7 +135,31 @@ analysis_log (owner_id → users, created_at)   -- 하루 분석 한도 계산�
 | `LOGIN_ATTEMPTS_PER_MINUTE` | | `10` | IP와 아이디별 분당 로그인 시도 수 |
 | `MAX_UPLOAD_BYTES` | | `10485760` | 10 MB |
 
-웹 빌드에는 환경변수가 필요 없다.
+| `PUBLIC_BASE_URL` | | `https://finchart-notes.duckdns.org` | 봇이 보내는 카드 링크의 주소 |
+| `TELEGRAM_BOT_TOKEN` | | | BotFather 토큰. 비어 있으면 봇 기능이 꺼진다 |
+| `TELEGRAM_BOT_USERNAME` | | | 예: `FinchartNoteBot` (연결 링크에 사용) |
+| `TELEGRAM_WEBHOOK_SECRET` | | | 웹훅 검증용 무작위 문자열 (16자 이상) |
+| `TELEGRAM_MODE` | | `webhook` | `webhook` / `polling`(로컬) / `off` |
+
+웹 빌드에는 환경변수가 필요 없다. 봇 토큰은 서버 설정(SecretStr)으로만 읽고, 웹 번들, API 응답, 로그 어디에도 나오지 않는다. Bot API 오류 메시지에서도 URL(토큰 포함)은 빼고 기록한다.
+
+## 텔레그램 봇
+
+```
+웹 설정 → POST /telegram/link-token → t.me/<봇>?start=<토큰> (QR / 링크)
+텔레그램 /start <토큰> → 웹훅 → 토큰 검증(해시, 10분, 1회용) → telegram_links 저장
+웹 설정은 2초 간격으로 /telegram/status를 폴링해 연결 완료를 감지한다
+```
+
+- **웹훅 처리**: 시크릿 헤더를 검증하고 즉시 `200`을 반환한다. 실제 처리는 백그라운드 태스크로 넘긴다.
+  1. 개인 채팅만 처리한다.
+  2. `update_id`를 `telegram_updates`에 먼저 기록한다. 이미 있으면 Telegram의 재전송이므로 무시한다.
+  3. 연결되지 않은 사용자에게는 "웹 설정에서 먼저 연결해주세요"만 보낸다.
+  4. 이미지(사진은 가장 큰 크기, 또는 이미지 MIME의 문서)는 "분석 중…"을 먼저 보낸다. 그다음 `getFile`로 내려받아 웹과 같은 `validate_image_upload` → `create_card`(해시 중복 확인 → 분석 → 크롭 → 저장)를 실행하고, 결과(제목, 핵심 3줄, 웹 카드 링크)로 그 메시지를 수정한다.
+- **저장 보드**: 캡션의 `#보드이름`(밑줄은 공백으로 바꿈, 없으면 새로 만든다) → 기본 보드 → `Inbox`(없으면 만들고 기본 보드로 지정) 순서로 정한다.
+- **명령**: `/board`(목록), `/board 이름`(기본 보드 변경), `/unlink`(연결 해제)
+- **제한**: 웹과 같은 `RateLimiter` 인스턴스(사용자별 분당), 하루 분석 한도, 10 MB를 적용한다.
+- **멱등성**: `update_id`로 같은 업데이트를 두 번 처리하지 않는다. 같은 이미지를 다시 보내면 SHA-256 중복 확인으로 분석 없이 기존 카드를 돌려준다.
 
 ## 백업과 복구
 
