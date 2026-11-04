@@ -512,9 +512,9 @@ function CardSection() {
     <Section
       id="card"
       title="카드"
-      lead="스크린샷 한 장 = 카드 한 장. 내부는 상자 대신 구분선으로 나눕니다."
+      lead="스크린샷 한 장 = 카드 한 장. 차트는 왼쪽, 해설은 오른쪽에 두고 상자 대신 구분선으로 나눕니다."
     >
-      <div className="grid grid-cols-2 items-start gap-5">
+      <div className="flex flex-col gap-5">
         <ChartCard
           card={SAMPLE_CARD}
           actions={

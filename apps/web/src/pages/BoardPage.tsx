@@ -1,21 +1,26 @@
 import { Download, Pencil, Trash2 } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
-import { useCallback, useEffect, useState, type SyntheticEvent } from 'react'
-import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
+import { useCallback, useState, type SyntheticEvent } from 'react'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { Button } from '../components/ui/Button.tsx'
-import { ChartCardSkeleton } from '../components/ui/ChartCard.tsx'
+import { ChartCard } from '../components/ui/ChartCard.tsx'
 import { Dialog } from '../components/ui/Dialog.tsx'
 import { IconButton } from '../components/ui/IconButton.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
 import { useBoards, useDeleteBoard, useRenameBoard } from '../features/boards/queries.ts'
-import { CardItem } from '../features/cards/CardItem.tsx'
-import { useCards, useReorderCards, useUploadCard } from '../features/cards/queries.ts'
+import { useCards, useUploadCard } from '../features/cards/queries.ts'
+import {
+  THUMBNAIL_GRID,
+  ThumbnailCard,
+  ThumbnailSkeleton,
+} from '../features/cards/ThumbnailCard.tsx'
 import { UploadZone } from '../features/cards/UploadZone.tsx'
 import { exportPdf } from '../features/cards/print.ts'
+import { cx } from '../design/cx.ts'
 import { errorMessage } from '../lib/api.ts'
-import type { Board } from '../lib/types.ts'
+import { CHART_TYPE_LABEL, type Board } from '../lib/types.ts'
 
 export default function BoardPage() {
   const { boardId = '' } = useParams()
@@ -25,7 +30,7 @@ export default function BoardPage() {
   if (boards.isSuccess && !board) return <Navigate to="/" replace />
 
   return (
-    <div className="mx-auto flex max-w-[760px] flex-col gap-6 px-6 pt-8 pb-24 md:px-10">
+    <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-6 pb-24 md:px-10 md:pt-8">
       {board ? <BoardHeader board={board} /> : <Skeleton className="h-8 w-1/2" />}
       <BoardCards key={boardId} boardId={boardId} />
     </div>
@@ -149,16 +154,8 @@ function BoardHeader({ board }: { board: Board }) {
 function BoardCards({ boardId }: { boardId: string }) {
   const cards = useCards(boardId)
   const upload = useUploadCard(boardId)
-  const reorder = useReorderCards(boardId)
   const toast = useToast()
   const [pending, setPending] = useState(0)
-  const { hash } = useLocation()
-
-  // Arriving from a home thumbnail (#card-<id>): bring that card into view once loaded.
-  useEffect(() => {
-    if (!hash || !cards.isSuccess) return
-    document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
-  }, [hash, cards.isSuccess])
 
   const onFiles = useCallback(
     (files: File[]) => {
@@ -182,45 +179,46 @@ function BoardCards({ boardId }: { boardId: string }) {
     [upload, toast],
   )
 
-  const move = (index: number, direction: -1 | 1) => {
-    if (!cards.data) return
-    const ids = cards.data.map((c) => c.id)
-    const target = index + direction
-    const [moved] = ids.splice(index, 1)
-    if (!moved || target < 0 || target > ids.length) return
-    ids.splice(target, 0, moved)
-    reorder.mutate(ids, {
-      onError: (e) => {
-        toast({ title: '순서를 바꾸지 못했습니다', description: errorMessage(e), tone: 'danger' })
-      },
-    })
-  }
-
   return (
     <>
       <UploadZone onFiles={onFiles} busy={pending > 0} />
-      {cards.isPending && <ChartCardSkeleton />}
+
       {cards.isSuccess && cards.data.length === 0 && pending === 0 && (
         <p className="py-16 text-center text-[14px] text-text-muted">
           아직 카드가 없습니다. 차트 스크린샷을 올려보세요.
         </p>
       )}
-      <div className="flex flex-col gap-6">
+
+      <ul className={cx(THUMBNAIL_GRID, 'print:hidden')}>
+        {Array.from({ length: pending }, (_, i) => (
+          <ThumbnailSkeleton key={`pending-${String(i)}`} label={i === 0 ? '분석 중' : '대기 중'} />
+        ))}
+        {cards.isPending &&
+          Array.from({ length: 4 }, (_, i) => <ThumbnailSkeleton key={`loading-${String(i)}`} />)}
         <AnimatePresence initial={false}>
           {cards.data?.map((card, index) => (
-            <CardItem
-              key={card.id}
-              card={card}
-              isFirst={index === 0}
-              isLast={index === cards.data.length - 1}
-              onMove={(direction) => {
-                move(index, direction)
-              }}
-            />
+            <ThumbnailCard key={card.id} card={card} index={index} />
           ))}
         </AnimatePresence>
-        {Array.from({ length: pending }, (_, i) => (
-          <ChartCardSkeleton key={`pending-${String(i)}`} />
+      </ul>
+
+      {/* PDF export prints every card in full, one after another. */}
+      <div className="hidden flex-col gap-6 print:flex">
+        {cards.data?.map((card) => (
+          <ChartCard
+            key={card.id}
+            className="break-inside-avoid"
+            card={{
+              title: card.title,
+              chartType: CHART_TYPE_LABEL[card.chart_type] ?? card.chart_type,
+              period: card.period,
+              imageUrl: card.image_url,
+              takeaways: card.takeaways,
+              interpretation: card.interpretation,
+              caveats: card.caveats,
+              note: card.user_note,
+            }}
+          />
         ))}
       </div>
     </>

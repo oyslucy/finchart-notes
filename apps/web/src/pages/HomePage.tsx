@@ -1,8 +1,10 @@
 import { useBoards } from '../features/boards/queries.ts'
 import { useRecentCards } from '../features/cards/queries.ts'
-import { ThumbnailCard, ThumbnailSkeleton } from '../features/cards/ThumbnailCard.tsx'
-
-const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+import {
+  THUMBNAIL_GRID as GRID,
+  ThumbnailCard,
+  ThumbnailSkeleton,
+} from '../features/cards/ThumbnailCard.tsx'
 
 export default function HomePage() {
   const boards = useBoards()
@@ -36,7 +38,7 @@ export default function HomePage() {
       {cards.isSuccess && cards.data.length > 0 && (
         <ul className={GRID}>
           {cards.data.map((card, index) => (
-            <ThumbnailCard key={card.id} card={card} index={index} />
+            <ThumbnailCard key={card.id} card={card} index={index} boardTitle={card.board_title} />
           ))}
         </ul>
       )}

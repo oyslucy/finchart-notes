@@ -23,8 +23,11 @@ export function useUploadCard(boardId: string) {
     onSuccess: ({ card, duplicate }) => {
       void qc.invalidateQueries({ queryKey: cardKeys.recent })
       if (duplicate && card.board_id !== boardId) return
+      // The server puts new cards first and shifts the rest.
       qc.setQueryData<Card[]>(cardKeys.board(boardId), (prev = []) =>
-        prev.some((c) => c.id === card.id) ? prev : [...prev, card],
+        prev.some((c) => c.id === card.id)
+          ? prev
+          : [card, ...prev.map((c) => ({ ...c, position: c.position + 1 }))],
       )
     },
   })
