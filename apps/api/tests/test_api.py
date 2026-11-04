@@ -353,3 +353,16 @@ def test_daily_analysis_quota_survives_card_deletion(tmp_path: Path) -> None:
     assert duplicate.status_code == 200 and duplicate.json()["duplicate"] is True
     bob = api.user("bob")
     assert upload(bob, board(bob), png(3)).status_code == 201
+
+
+def test_recent_cards_span_boards_newest_first(api: Api) -> None:
+    alice, bob = api.user("alice"), api.user("bob")
+    first = upload(alice, board(alice, "매크로"), png(1)).json()["card"]["id"]
+    second = upload(alice, board(alice, "반도체"), png(2)).json()["card"]["id"]
+    upload(bob, board(bob), png(3))
+
+    recent = alice.get("/api/cards").json()
+
+    assert [c["id"] for c in recent] == [second, first]
+    assert [c["board_title"] for c in recent] == ["반도체", "매크로"]
+    assert recent[0]["thumb_url"].endswith("_thumb.webp")

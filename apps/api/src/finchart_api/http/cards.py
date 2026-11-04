@@ -13,7 +13,7 @@ from finchart_api.domain.cards import (
 from finchart_api.domain.models import Card, CardPatch
 from finchart_api.domain.ports import InvalidOrderError, UserData
 from finchart_api.http.deps import CurrentAccount, ServicesDep, UserDataDep
-from finchart_api.http.schemas import CardCreateOut, CardOut, OrderIn
+from finchart_api.http.schemas import CardCreateOut, CardOut, OrderIn, RecentCardOut
 from finchart_api.imaging import InvalidImageError, detect_mime
 from finchart_api.llm.base import VisionProviderError
 
@@ -74,6 +74,19 @@ async def upload_card(
         response.status_code = status.HTTP_200_OK
     [card] = _with_urls(data, [result.card])
     return CardCreateOut(card=card, duplicate=result.duplicate)
+
+
+RECENT_LIMIT = 200
+
+
+@router.get("/cards")
+async def list_recent_cards(data: UserDataDep) -> list[RecentCardOut]:
+    titles = {b.id: b.title for b in await data.boards.list_all()}
+    cards = await data.cards.list_recent(RECENT_LIMIT)
+    return [
+        RecentCardOut(**out.model_dump(), board_title=titles.get(card.board_id, ""))
+        for card, out in zip(cards, _with_urls(data, cards), strict=True)
+    ]
 
 
 @router.get("/boards/{board_id}/cards")

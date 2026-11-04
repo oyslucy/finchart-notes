@@ -206,6 +206,17 @@ class SqliteCards:
             "select * from cards where owner_id = ? and image_sha256 = ?", (self._owner, sha256)
         )
 
+    async def list_recent(self, limit: int) -> list[Card]:
+        def op(conn: sqlite3.Connection) -> list[Card]:
+            rows = conn.execute(
+                "select * from cards where owner_id = ? order by created_at desc limit ?",
+                (self._owner, limit),
+            )
+            return [_card(r) for r in rows]
+
+        result: list[Card] = await self._db.run(op)
+        return result
+
     async def get(self, card_id: UUID) -> Card | None:
         return await self._one(
             "select * from cards where id = ? and owner_id = ?", (str(card_id), self._owner)

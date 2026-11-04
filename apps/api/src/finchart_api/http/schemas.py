@@ -42,6 +42,10 @@ class CardOut(BaseModel):
         )
 
 
+class RecentCardOut(CardOut):
+    board_title: str
+
+
 class CardCreateOut(BaseModel):
     card: CardOut
     duplicate: bool
