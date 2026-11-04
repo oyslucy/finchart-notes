@@ -17,7 +17,14 @@ from finchart_api.domain.ports import DuplicateCardError, InvalidOrderError, Use
 
 DB_FILENAME = "finchart.db"
 IMAGES_DIRNAME = "images"
-SCHEMA_VERSION = 1
+# Each entry upgrades the schema by one version; never edit an entry once released.
+_MIGRATIONS: list[str] = [
+    "alter table cards add column pinned_at text",
+]
+SCHEMA_VERSION = 1 + len(_MIGRATIONS)
+# Pinned cards first (most recently pinned on top), then the user's order.
+_BOARD_ORDER = "(pinned_at is null), pinned_at desc, position"
+_RECENT_ORDER = "(pinned_at is null), pinned_at desc, created_at desc"
 
 _SCHEMA = """
 create table if not exists users (
@@ -89,6 +96,9 @@ class Database:
         self.images_dir.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(_SCHEMA)
+            version = conn.execute("pragma user_version").fetchone()[0] or 1
+            for statement in _MIGRATIONS[version - 1 :]:
+                conn.execute(statement)
             conn.execute(f"pragma user_version = {SCHEMA_VERSION}")
 
     @contextmanager
@@ -209,8 +219,27 @@ class SqliteCards:
     async def list_recent(self, limit: int) -> list[Card]:
         def op(conn: sqlite3.Connection) -> list[Card]:
             rows = conn.execute(
-                "select * from cards where owner_id = ? order by created_at desc limit ?",
+                f"select * from cards where owner_id = ? order by {_RECENT_ORDER} limit ?",
                 (self._owner, limit),
+            )
+            return [_card(r) for r in rows]
+
+        result: list[Card] = await self._db.run(op)
+        return result
+
+    async def search(self, query: str, limit: int) -> list[Card]:
+        pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        columns = ["c.title", "c.interpretation", "c.takeaways", "c.caveats", "c.period"]
+        columns += ["coalesce(c.user_note, '')", "b.title"]
+        where = " or ".join(f"{col} like ? escape '\\'" for col in columns)
+
+        def op(conn: sqlite3.Connection) -> list[Card]:
+            rows = conn.execute(
+                f"""select c.* from cards c join boards b on b.id = c.board_id
+                    where c.owner_id = ? and ({where})
+                    order by (c.pinned_at is null), c.pinned_at desc, c.created_at desc
+                    limit ?""",
+                (self._owner, *[pattern] * len(columns), limit),
             )
             return [_card(r) for r in rows]
 
@@ -286,7 +315,7 @@ class SqliteCards:
     async def list_for_board(self, board_id: UUID) -> list[Card]:
         def op(conn: sqlite3.Connection) -> list[Card]:
             rows = conn.execute(
-                "select * from cards where board_id = ? and owner_id = ? order by position",
+                f"select * from cards where board_id = ? and owner_id = ? order by {_BOARD_ORDER}",
                 (str(board_id), self._owner),
             )
             return [_card(r) for r in rows]
@@ -296,6 +325,8 @@ class SqliteCards:
 
     async def update(self, card_id: UUID, patch: CardPatch) -> Card | None:
         fields = patch.model_dump(exclude_unset=True)
+        if "pinned" in fields:
+            fields["pinned_at"] = _now() if fields.pop("pinned") else None
         if not fields:
             return await self.get(card_id)
         for key in ("takeaways", "caveats"):

@@ -378,3 +378,92 @@ def test_recent_cards_span_boards_newest_first(api: Api) -> None:
     assert [c["id"] for c in recent] == [second, first]
     assert [c["board_title"] for c in recent] == ["반도체", "매크로"]
     assert recent[0]["thumb_url"].endswith("_thumb.webp")
+
+
+# --- pinning, editing, search ---
+
+
+def test_pinned_cards_come_first_on_board_and_home(api: Api) -> None:
+    alice = api.user("alice")
+    board_id = board(alice)
+    ids = [upload(alice, board_id, png(i)).json()["card"]["id"] for i in range(3)]
+    oldest = ids[0]
+
+    pinned = alice.patch(f"/api/cards/{oldest}", json={"pinned": True})
+    on_board = [c["id"] for c in alice.get(f"/api/boards/{board_id}/cards").json()]
+    on_home = [c["id"] for c in alice.get("/api/cards").json()]
+
+    assert pinned.json()["pinned"] is True
+    assert on_board[0] == oldest and on_home[0] == oldest
+
+    alice.patch(f"/api/cards/{oldest}", json={"pinned": False})
+    assert [c["id"] for c in alice.get(f"/api/boards/{board_id}/cards").json()] == ids[::-1]
+
+
+def test_card_text_can_be_edited(api: Api) -> None:
+    alice = api.user("alice")
+    card = upload(alice, board(alice), png(1)).json()["card"]
+
+    r = alice.patch(
+        f"/api/cards/{card['id']}",
+        json={"title": "새 제목", "takeaways": ["하나", "둘"], "caveats": [], "period": None},
+    )
+
+    body = r.json()
+    assert (body["title"], body["takeaways"], body["caveats"], body["period"]) == (
+        "새 제목",
+        ["하나", "둘"],
+        [],
+        None,
+    )
+    assert body["interpretation"] == card["interpretation"]
+
+
+def test_card_edit_validates_limits(api: Api) -> None:
+    alice = api.user("alice")
+    card = upload(alice, board(alice), png(1)).json()["card"]
+
+    too_many = alice.patch(f"/api/cards/{card['id']}", json={"takeaways": ["a", "b", "c", "d"]})
+    empty_title = alice.patch(f"/api/cards/{card['id']}", json={"title": ""})
+
+    assert too_many.status_code == 422 and empty_title.status_code == 422
+
+
+def test_search_matches_text_note_and_board_title(api: Api) -> None:
+    alice, bob = api.user("alice"), api.user("bob")
+    macro = board(alice, "매크로 메모")
+    first = upload(alice, macro, png(1)).json()["card"]["id"]
+    second = upload(alice, board(alice, "반도체"), png(2)).json()["card"]["id"]
+    alice.patch(f"/api/cards/{second}", json={"user_note": "HBM 수요 확인"})
+    upload(bob, board(bob, "매크로"), png(3))
+
+    def ids(q: str) -> list[str]:
+        return [c["id"] for c in alice.get("/api/cards", params={"q": q}).json()]
+
+    assert ids("hbm") == [second]
+    assert ids("매크로") == [first]
+    assert set(ids("KOSPI")) == {first, second}
+    assert ids("없는단어") == []
+    assert ids("%") == []
+
+
+def test_existing_database_is_migrated(tmp_path: Path) -> None:
+    import sqlite3
+
+    with sqlite3.connect(tmp_path / "finchart.db") as conn:
+        conn.executescript(
+            """create table cards (id text primary key, board_id text, owner_id text,
+                 position integer, image_path text, thumb_path text, image_sha256 text,
+                 title text, chart_type text, period text, takeaways text,
+                 interpretation text, caveats text, user_note text, model text,
+                 raw_response text, created_at text);
+               pragma user_version = 1;"""
+        )
+
+    alice = Api(tmp_path).user("alice")
+
+    with sqlite3.connect(tmp_path / "finchart.db") as conn:
+        columns = [r[1] for r in conn.execute("pragma table_info(cards)")]
+        version = conn.execute("pragma user_version").fetchone()[0]
+    assert "pinned_at" in columns and version == 2
+    assert alice.get("/api/boards").status_code == 200

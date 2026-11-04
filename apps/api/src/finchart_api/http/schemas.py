@@ -30,13 +30,15 @@ class CardOut(BaseModel):
     user_note: str | None
     model: str
     created_at: datetime
+    pinned: bool
     image_url: str
     thumb_url: str
 
     @classmethod
     def from_card(cls, card: Card, url: Callable[[str], str]) -> "CardOut":
         return cls(
-            **card.model_dump(include=set(cls.model_fields) - {"image_url", "thumb_url"}),
+            **card.model_dump(include=set(cls.model_fields) - {"image_url", "thumb_url", "pinned"}),
+            pinned=card.pinned_at is not None,
             image_url=url(card.image_path),
             thumb_url=url(card.thumb_path),
         )

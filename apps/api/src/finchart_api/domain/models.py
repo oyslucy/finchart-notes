@@ -28,6 +28,7 @@ class Card(BaseModel):
     user_note: str | None
     model: str
     created_at: datetime
+    pinned_at: datetime | None = None
 
 
 class NewCard(BaseModel):
@@ -54,3 +55,4 @@ class CardPatch(BaseModel):
     interpretation: str | None = None
     caveats: list[str] | None = Field(default=None, max_length=2)
     user_note: str | None = None
+    pinned: bool | None = None

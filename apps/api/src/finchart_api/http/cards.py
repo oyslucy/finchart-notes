@@ -80,9 +80,15 @@ RECENT_LIMIT = 200
 
 
 @router.get("/cards")
-async def list_recent_cards(data: UserDataDep) -> list[RecentCardOut]:
+async def list_recent_cards(data: UserDataDep, q: str = "") -> list[RecentCardOut]:
+    """Recent cards across boards; with `q`, a keyword search over text and board titles."""
     titles = {b.id: b.title for b in await data.boards.list_all()}
-    cards = await data.cards.list_recent(RECENT_LIMIT)
+    query = q.strip()[:100]
+    cards = (
+        await data.cards.search(query, RECENT_LIMIT)
+        if query
+        else await data.cards.list_recent(RECENT_LIMIT)
+    )
     return [
         RecentCardOut(**out.model_dump(), board_title=titles.get(card.board_id, ""))
         for card, out in zip(cards, _with_urls(data, cards), strict=True)
