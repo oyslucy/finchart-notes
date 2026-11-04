@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     login_attempts_per_minute: int = 10
     signups_per_ip_per_hour: int = 5
     max_upload_bytes: int = 10 * 1024 * 1024
+    # Starter boards for new accounts, comma-separated, in display order.
+    default_boards: str = "반도체,IT,2차전지,바이오,금융"
     web_dist_dir: Path | None = None
     # Used to build links back to the web app (Telegram replies).
     public_base_url: str = "https://finchart-notes.duckdns.org"
@@ -37,6 +39,10 @@ class Settings(BaseSettings):
     @cached_property
     def allowed_username_set(self) -> frozenset[str]:
         return frozenset(u.strip().lower() for u in self.allowed_usernames.split(",") if u.strip())
+
+    @property
+    def default_board_names(self) -> list[str]:
+        return [n.strip() for n in self.default_boards.split(",") if n.strip()]
 
     def is_username_allowed(self, username: str) -> bool:
         return not self.allowed_username_set or username in self.allowed_username_set

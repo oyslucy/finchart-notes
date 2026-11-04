@@ -17,7 +17,12 @@ class Api:
     """One app over a temp data dir; each user gets their own cookie-carrying client."""
 
     def __init__(self, data_dir: Path, **overrides: object) -> None:
-        options: dict[str, object] = {"allowed_usernames": "alice, bob", **overrides}
+        # Starter boards are off by default so tests start from an empty account.
+        options: dict[str, object] = {
+            "allowed_usernames": "alice, bob",
+            "default_boards": "",
+            **overrides,
+        }
         settings = Settings(_env_file=None, data_dir=data_dir, **options)  # type: ignore[arg-type]
         self.provider = FakeProvider()
         self.app = create_app(settings, provider=self.provider)
@@ -488,3 +493,33 @@ def test_move_card_to_another_board(api: Api) -> None:
         alice.post(f"/api/cards/{card_id}/move", json={"board_id": bobs_board}).status_code == 404
     )
     assert bob.post(f"/api/cards/{card_id}/move", json={"board_id": bobs_board}).status_code == 404
+
+
+def test_signup_creates_default_boards_in_order(tmp_path: Path) -> None:
+    alice = Api(tmp_path, default_boards="반도체,IT,2차전지,바이오,금융").user("alice")
+    titles = [b["title"] for b in alice.get("/api/boards").json()]
+    assert titles == ["반도체", "IT", "2차전지", "바이오", "금융"]
+
+
+async def test_add_default_boards_skips_existing(tmp_path: Path) -> None:
+    from uuid import uuid4
+
+    from finchart_api.domain.boards import add_default_boards
+    from finchart_api.infra.sqlite import Database, SqliteBoards
+
+    db = Database(tmp_path)
+    db.migrate()
+    owner = uuid4()
+    with db.connect() as conn:
+        conn.execute(
+            "insert into users (id, username, password_hash, created_at)"
+            " values (?, 'u', 'h', 'now')",
+            (str(owner),),
+        )
+    boards = SqliteBoards(db, owner)
+    await boards.create("it")
+
+    created = await add_default_boards(boards, ["반도체", "IT", "금융"])
+
+    assert sorted(b.title for b in created) == ["금융", "반도체"]
+    assert len(await boards.list_all()) == 3

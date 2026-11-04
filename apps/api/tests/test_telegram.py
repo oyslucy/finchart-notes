@@ -57,6 +57,7 @@ class Harness:
             "telegram_bot_username": "TestBot",
             "telegram_webhook_secret": SecretStr(SECRET),
             "max_upload_bytes": 10 * 1024 * 1024,
+            "default_boards": "",
             **overrides,
         }
         self.telegram = FakeTelegram()

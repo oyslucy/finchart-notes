@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
+from finchart_api.domain.boards import add_default_boards
 from finchart_api.http.deps import SESSION_COOKIE, CurrentAccount, ServicesDep
 from finchart_api.infra.accounts import (
     SESSION_TTL,
@@ -9,6 +10,7 @@ from finchart_api.infra.accounts import (
     UsernameTakenError,
     normalize_username,
 )
+from finchart_api.infra.sqlite import SqliteBoards
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -59,6 +61,9 @@ async def signup(
         raise HTTPException(status.HTTP_409_CONFLICT, "username taken") from exc
     except AccountError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    await add_default_boards(
+        SqliteBoards(services.db, account.id), services.settings.default_board_names
+    )
     return await _sign_in(response, services, account)
 
 
