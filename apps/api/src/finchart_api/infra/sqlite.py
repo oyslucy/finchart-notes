@@ -20,6 +20,26 @@ IMAGES_DIRNAME = "images"
 # Each entry upgrades the schema by one version; never edit an entry once released.
 _MIGRATIONS: list[str] = [
     "alter table cards add column pinned_at text",
+    """create table telegram_links (
+         user_id           text primary key references users(id) on delete cascade,
+         telegram_user_id  integer not null unique,
+         chat_id           integer not null,
+         telegram_username text,
+         default_board_id  text references boards(id) on delete set null,
+         created_at        text not null
+       )""",
+    """create table telegram_link_tokens (
+         token_hash  text primary key,
+         user_id     text not null references users(id) on delete cascade,
+         created_at  text not null,
+         expires_at  text not null,
+         used_at     text
+       )""",
+    # Telegram retries deliveries; remembering update_ids makes the webhook idempotent.
+    """create table telegram_updates (
+         update_id    integer primary key,
+         received_at  text not null
+       )""",
 ]
 SCHEMA_VERSION = 1 + len(_MIGRATIONS)
 # Pinned cards first (most recently pinned on top), then the user's order.

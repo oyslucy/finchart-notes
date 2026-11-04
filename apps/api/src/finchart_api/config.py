@@ -2,6 +2,7 @@ from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,14 @@ class Settings(BaseSettings):
     signups_per_ip_per_hour: int = 5
     max_upload_bytes: int = 10 * 1024 * 1024
     web_dist_dir: Path | None = None
+    # Used to build links back to the web app (Telegram replies).
+    public_base_url: str = "https://finchart-notes.duckdns.org"
+    # SecretStr keeps tokens out of reprs and logs.
+    telegram_bot_token: SecretStr = SecretStr("")
+    telegram_bot_username: str = ""
+    telegram_webhook_secret: SecretStr = SecretStr("")
+    # "webhook" in production; "polling" for local development without a public URL.
+    telegram_mode: Literal["webhook", "polling", "off"] = "webhook"
 
     @cached_property
     def allowed_username_set(self) -> frozenset[str]:
@@ -31,6 +40,14 @@ class Settings(BaseSettings):
 
     def is_username_allowed(self, username: str) -> bool:
         return not self.allowed_username_set or username in self.allowed_username_set
+
+    @property
+    def telegram_enabled(self) -> bool:
+        return bool(
+            self.telegram_mode != "off"
+            and self.telegram_bot_token.get_secret_value()
+            and self.telegram_bot_username
+        )
 
     @property
     def secure_cookies(self) -> bool:

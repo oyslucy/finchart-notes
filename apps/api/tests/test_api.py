@@ -450,6 +450,8 @@ def test_search_matches_text_note_and_board_title(api: Api) -> None:
 def test_existing_database_is_migrated(tmp_path: Path) -> None:
     import sqlite3
 
+    from finchart_api.infra.sqlite import SCHEMA_VERSION
+
     with sqlite3.connect(tmp_path / "finchart.db") as conn:
         conn.executescript(
             """create table cards (id text primary key, board_id text, owner_id text,
@@ -465,5 +467,5 @@ def test_existing_database_is_migrated(tmp_path: Path) -> None:
     with sqlite3.connect(tmp_path / "finchart.db") as conn:
         columns = [r[1] for r in conn.execute("pragma table_info(cards)")]
         version = conn.execute("pragma user_version").fetchone()[0]
-    assert "pinned_at" in columns and version == 2
+    assert "pinned_at" in columns and version == SCHEMA_VERSION
     assert alice.get("/api/boards").status_code == 200
