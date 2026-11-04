@@ -40,7 +40,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <motion.li
                 layout
                 {...appear}
-                className="flex w-[340px] items-start gap-2.5 rounded-lg border border-border bg-surface px-3.5 py-3 shadow-pop"
+                className="flex w-[340px] items-start gap-2.5 rounded-lg border border-border bg-surface px-3.5 py-3 shadow-pop print:hidden"
               >
                 <ToneIcon tone={item.tone ?? 'neutral'} />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -63,7 +63,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             </Primitive.Root>
           ))}
         </AnimatePresence>
-        <Primitive.Viewport className="fixed right-4 bottom-4 z-50 flex flex-col gap-2 outline-none" />
+        <Primitive.Viewport className="fixed right-4 bottom-4 z-50 flex flex-col gap-2 outline-none print:hidden" />
       </Primitive.Provider>
     </ToastContext>
   )

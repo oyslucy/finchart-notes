@@ -4,7 +4,6 @@ import { useCallback, useState, type SyntheticEvent } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { Button } from '../components/ui/Button.tsx'
-import { ChartCard } from '../components/ui/ChartCard.tsx'
 import { Dialog } from '../components/ui/Dialog.tsx'
 import { IconButton } from '../components/ui/IconButton.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
@@ -16,11 +15,12 @@ import {
   ThumbnailCard,
   ThumbnailSkeleton,
 } from '../features/cards/ThumbnailCard.tsx'
+import { PrintBoard } from '../features/cards/PrintBoard.tsx'
 import { UploadZone } from '../features/cards/UploadZone.tsx'
 import { exportPdf } from '../features/cards/print.ts'
 import { cx } from '../design/cx.ts'
 import { errorMessage } from '../lib/api.ts'
-import { CHART_TYPE_LABEL, type Board } from '../lib/types.ts'
+import type { Board } from '../lib/types.ts'
 
 export default function BoardPage() {
   const { boardId = '' } = useParams()
@@ -30,9 +30,9 @@ export default function BoardPage() {
   if (boards.isSuccess && !board) return <Navigate to="/" replace />
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-6 pb-24 md:px-10 md:pt-8">
+    <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-6 pb-24 md:px-10 md:pt-8 print:m-0 print:block print:max-w-none print:p-0">
       {board ? <BoardHeader board={board} /> : <Skeleton className="h-8 w-1/2" />}
-      <BoardCards key={boardId} boardId={boardId} />
+      <BoardCards key={boardId} boardId={boardId} title={board?.title ?? ''} />
     </div>
   )
 }
@@ -67,7 +67,7 @@ function BoardHeader({ board }: { board: Board }) {
   }
 
   return (
-    <header className="flex items-center justify-between gap-4">
+    <header className="flex items-center justify-between gap-4 print:hidden">
       {editing ? (
         <form onSubmit={submit} className="flex-1">
           <input
@@ -82,11 +82,22 @@ function BoardHeader({ board }: { board: Board }) {
             onKeyDown={(e) => {
               if (e.key === 'Escape') setEditing(false)
             }}
-            className="w-full rounded-md bg-transparent text-[26px] font-semibold tracking-[-0.01em] outline-none"
+            className="-mx-1.5 w-full rounded-md bg-surface px-1.5 text-[26px] font-semibold tracking-[-0.01em] shadow-[0_0_0_3px_var(--focus-ring)] outline-none"
           />
         </form>
       ) : (
-        <h1 className="min-w-0 truncate text-[26px]">{board.title}</h1>
+        <h1 className="min-w-0 flex-1">
+          <button
+            type="button"
+            title="눌러서 이름 바꾸기"
+            onClick={() => {
+              setEditing(true)
+            }}
+            className="-mx-1.5 max-w-full truncate rounded-md px-1.5 text-left text-[26px] font-semibold tracking-[-0.01em] transition-colors duration-150 hover:bg-bg-muted"
+          >
+            {board.title}
+          </button>
+        </h1>
       )}
       <div data-print-hide className="flex shrink-0 items-center gap-1">
         <Button size="sm" variant="ghost" icon={Download} onClick={exportPdf}>
@@ -151,7 +162,7 @@ function BoardHeader({ board }: { board: Board }) {
   )
 }
 
-function BoardCards({ boardId }: { boardId: string }) {
+function BoardCards({ boardId, title }: { boardId: string; title: string }) {
   const cards = useCards(boardId)
   const upload = useUploadCard(boardId)
   const toast = useToast()
@@ -202,25 +213,7 @@ function BoardCards({ boardId }: { boardId: string }) {
         </AnimatePresence>
       </ul>
 
-      {/* PDF export prints every card in full, one after another. */}
-      <div className="hidden flex-col gap-6 print:flex">
-        {cards.data?.map((card) => (
-          <ChartCard
-            key={card.id}
-            className="break-inside-avoid"
-            card={{
-              title: card.title,
-              chartType: CHART_TYPE_LABEL[card.chart_type] ?? card.chart_type,
-              period: card.period,
-              imageUrl: card.image_url,
-              takeaways: card.takeaways,
-              interpretation: card.interpretation,
-              caveats: card.caveats,
-              note: card.user_note,
-            }}
-          />
-        ))}
-      </div>
+      <PrintBoard title={title} cards={cards.data ?? []} />
     </>
   )
 }

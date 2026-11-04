@@ -131,7 +131,8 @@
 
 @media print {
   @page {
-    margin: 14mm;
+    size: A4;
+    margin: 12mm;
   }
 
   [data-print-hide] {
@@ -140,9 +141,53 @@
 
   html {
     background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  article {
+  /* One A4 page (minus margins): title row + two equal card rows. */
+  .print-page {
+    display: flex;
+    flex-direction: column;
+    gap: 5mm;
+    /* A4 is 297mm; 2 x 12mm margins leave 273mm. Keep a little slack against rounding. */
+    height: 270mm;
+    break-after: page;
+    overflow: hidden;
+  }
+
+  .print-page:last-child {
+    break-after: auto;
+  }
+
+  .print-card {
+    display: grid;
+    flex: 1 1 0;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 5mm;
+    min-height: 0;
+    max-height: 50%;
     break-inside: avoid;
+  }
+
+  .print-card + .print-card {
+    border-top: 1px solid #e4e1dc;
+    padding-top: 5mm;
+  }
+
+  .print-card__image {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .print-card__image img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border: 1px solid #e4e1dc;
+    border-radius: 4px;
   }
 }
