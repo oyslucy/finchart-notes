@@ -1,6 +1,7 @@
 import { Download, Pencil, Trash2 } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { useCallback, useState, type SyntheticEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { Button } from '../components/ui/Button.tsx'
@@ -15,6 +16,7 @@ import {
   ThumbnailCard,
   ThumbnailSkeleton,
 } from '../features/cards/ThumbnailCard.tsx'
+import { ExportDialog, type ExportSelection } from '../features/cards/ExportDialog.tsx'
 import { PrintBoard } from '../features/cards/PrintBoard.tsx'
 import { UploadZone } from '../features/cards/UploadZone.tsx'
 import { exportPdf } from '../features/cards/print.ts'
@@ -26,18 +28,53 @@ export default function BoardPage() {
   const { boardId = '' } = useParams()
   const boards = useBoards()
   const board = boards.data?.find((b) => b.id === boardId)
+  const cards = useCards(boardId)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportKey, setExportKey] = useState(0)
+  const [printSelection, setPrintSelection] = useState<ExportSelection | null>(null)
 
   if (boards.isSuccess && !board) return <Navigate to="/" replace />
 
+  const exportSelection = (selection: ExportSelection) => {
+    setExportOpen(false)
+    // Render the chosen cards into the print layout before the print dialog snapshots it.
+    flushSync(() => {
+      setPrintSelection(selection)
+    })
+    exportPdf()
+  }
+
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-6 pb-24 md:px-10 md:pt-8 print:m-0 print:block print:max-w-none print:p-0">
-      {board ? <BoardHeader board={board} /> : <Skeleton className="h-8 w-1/2" />}
-      <BoardCards key={boardId} boardId={boardId} title={board?.title ?? ''} />
+      {board ? (
+        <BoardHeader
+          board={board}
+          onExport={() => {
+            setExportKey((k) => k + 1)
+            setExportOpen(true)
+          }}
+        />
+      ) : (
+        <Skeleton className="h-8 w-1/2" />
+      )}
+      <BoardCards key={boardId} boardId={boardId} />
+      <PrintBoard
+        title={board?.title ?? ''}
+        cards={printSelection?.cards ?? cards.data ?? []}
+        subtitle={printSelection?.label}
+      />
+      <ExportDialog
+        key={exportKey}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        cards={cards.data ?? []}
+        onExport={exportSelection}
+      />
     </div>
   )
 }
 
-function BoardHeader({ board }: { board: Board }) {
+function BoardHeader({ board, onExport }: { board: Board; onExport: () => void }) {
   const [editing, setEditing] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const rename = useRenameBoard()
@@ -100,7 +137,7 @@ function BoardHeader({ board }: { board: Board }) {
         </h1>
       )}
       <div data-print-hide className="flex shrink-0 items-center gap-1">
-        <Button size="sm" variant="ghost" icon={Download} onClick={exportPdf}>
+        <Button size="sm" variant="ghost" icon={Download} onClick={onExport}>
           PDF
         </Button>
         <IconButton
@@ -162,7 +199,7 @@ function BoardHeader({ board }: { board: Board }) {
   )
 }
 
-function BoardCards({ boardId, title }: { boardId: string; title: string }) {
+function BoardCards({ boardId }: { boardId: string }) {
   const cards = useCards(boardId)
   const upload = useUploadCard(boardId)
   const toast = useToast()
@@ -193,6 +230,11 @@ function BoardCards({ boardId, title }: { boardId: string; title: string }) {
   return (
     <>
       <UploadZone onFiles={onFiles} busy={pending > 0} />
+      {(cards.data?.length ?? 0) > 0 && (
+        <p className="-mt-3 hidden text-[12px] text-text-faint md:block">
+          카드를 끌어 다른 보드에 놓으면 옮겨집니다. 메뉴의 보드 이동으로도 옮길 수 있습니다.
+        </p>
+      )}
 
       {cards.isSuccess && cards.data.length === 0 && pending === 0 && (
         <p className="py-16 text-center text-[14px] text-text-muted">
@@ -212,8 +254,6 @@ function BoardCards({ boardId, title }: { boardId: string; title: string }) {
           ))}
         </AnimatePresence>
       </ul>
-
-      <PrintBoard title={title} cards={cards.data ?? []} />
     </>
   )
 }

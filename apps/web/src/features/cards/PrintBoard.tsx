@@ -13,7 +13,15 @@ function pairs<T>(items: T[]): T[][] {
 }
 
 /** Print-only layout: A4 pages with the board title and two cards (chart + reading) each. */
-export function PrintBoard({ title, cards }: { title: string; cards: Card[] }) {
+export function PrintBoard({
+  title,
+  cards,
+  subtitle,
+}: {
+  title: string
+  cards: Card[]
+  subtitle?: string | undefined
+}) {
   const pages = pairs(cards)
   const printedOn = today.format(new Date())
   return (
@@ -23,6 +31,7 @@ export function PrintBoard({ title, cards }: { title: string; cards: Card[] }) {
           <header className="flex items-baseline justify-between border-b border-[#d6d2cc] pb-[3mm]">
             <h1 className="text-[16pt] leading-tight font-semibold tracking-[-0.01em]">{title}</h1>
             <span className="text-[8pt] text-[#6f6a63] tabular">
+              {subtitle ? `${subtitle} · ` : ''}
               {printedOn} · {i + 1} / {pages.length}
             </span>
           </header>
