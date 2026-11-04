@@ -8,8 +8,12 @@ export const cardKeys = {
   recent: ['cards', 'recent'] as const,
 }
 
-export function useRecentCards() {
-  return useQuery({ queryKey: cardKeys.recent, queryFn: api.listRecentCards })
+export function useRecentCards(query = '') {
+  return useQuery({
+    queryKey: [...cardKeys.recent, query],
+    queryFn: () => api.listRecentCards(query),
+    placeholderData: (previous) => previous,
+  })
 }
 
 export function useCards(boardId: string) {
@@ -37,11 +41,14 @@ export function useUpdateCard(boardId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: CardPatch }) => api.updateCard(id, patch),
-    onSuccess: (card) => {
+    onSuccess: (card, { patch }) => {
       void qc.invalidateQueries({ queryKey: cardKeys.recent })
       qc.setQueryData<Card[]>(cardKeys.board(boardId), (prev = []) =>
         prev.map((c) => (c.id === card.id ? card : c)),
       )
+      // Pinning changes the order, which only the server knows exactly.
+      if (patch.pinned !== undefined)
+        void qc.invalidateQueries({ queryKey: cardKeys.board(boardId) })
     },
   })
 }

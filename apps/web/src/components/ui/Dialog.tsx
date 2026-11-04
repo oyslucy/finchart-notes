@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Dialog as Primitive } from 'radix-ui'
 import type { ReactNode } from 'react'
 
+import { cx } from '../../design/cx.ts'
 import { appear, fade } from '../../design/motion.ts'
 import { IconButton } from './IconButton.tsx'
 
@@ -13,9 +14,18 @@ interface DialogProps {
   description?: ReactNode
   footer?: ReactNode
   children?: ReactNode
+  size?: 'md' | 'lg'
 }
 
-export function Dialog({ open, onOpenChange, title, description, footer, children }: DialogProps) {
+export function Dialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  footer,
+  children,
+  size = 'md',
+}: DialogProps) {
   return (
     <Primitive.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -27,7 +37,10 @@ export function Dialog({ open, onOpenChange, title, description, footer, childre
             <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center p-4">
               <Primitive.Content asChild forceMount>
                 <motion.div
-                  className="pointer-events-auto w-full max-w-[440px] rounded-lg border border-border bg-surface shadow-pop focus:outline-none"
+                  className={cx(
+                    'pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-lg border border-border bg-surface shadow-pop focus:outline-none',
+                    size === 'lg' ? 'max-w-[600px]' : 'max-w-[440px]',
+                  )}
                   {...appear}
                 >
                   <div className="flex items-start justify-between gap-4 px-5 pt-5">
@@ -53,7 +66,7 @@ export function Dialog({ open, onOpenChange, title, description, footer, childre
                       />
                     </Primitive.Close>
                   </div>
-                  {children && <div className="px-5 pt-4">{children}</div>}
+                  {children && <div className="min-h-0 overflow-y-auto px-5 pt-4">{children}</div>}
                   {footer && (
                     <div className="mt-5 flex justify-end gap-2 border-t border-border px-5 py-3.5">
                       {footer}

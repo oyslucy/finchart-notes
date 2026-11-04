@@ -4,7 +4,9 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  NotebookPen,
+  Pencil,
+  Pin,
+  PinOff,
   Trash2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -17,10 +19,11 @@ import { Kbd } from '../components/ui/Kbd.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
 import { durations, easeOut } from '../design/motion.ts'
 import { useBoards } from '../features/boards/queries.ts'
-import { DeleteCardDialog, NoteDialog } from '../features/cards/CardDialogs.tsx'
+import { DeleteCardDialog, EditCardDialog } from '../features/cards/CardDialogs.tsx'
 import { useCards, useReorderCards } from '../features/cards/queries.ts'
+import { useTogglePin } from '../features/cards/useTogglePin.ts'
 import { errorMessage } from '../lib/api.ts'
-import { CHART_TYPE_LABEL } from '../lib/types.ts'
+import { CHART_TYPE_LABEL, type Card } from '../lib/types.ts'
 
 function isTyping(target: EventTarget | null): boolean {
   return (
@@ -36,7 +39,7 @@ export default function CardDetailPage() {
   const reorder = useReorderCards(boardId)
   const navigate = useNavigate()
   const toast = useToast()
-  const [noteOpen, setNoteOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const list = cards.data ?? []
@@ -45,11 +48,14 @@ export default function CardDetailPage() {
   const prev = list[index - 1]
   const next = list[index + 1]
   const boardTitle = boards.data?.find((b) => b.id === boardId)?.title ?? ''
+  // Reordering only makes sense within the pinned group or within the unpinned group.
+  const canMoveUp = prev !== undefined && card !== undefined && prev.pinned === card.pinned
+  const canMoveDown = next !== undefined && card !== undefined && next.pinned === card.pinned
   const boardPath = `/boards/${boardId}`
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isTyping(event.target) || noteOpen || deleteOpen) return
+      if (isTyping(event.target) || editOpen || deleteOpen) return
       if (event.key === 'ArrowLeft' && prev) void navigate(`${boardPath}/cards/${prev.id}`)
       if (event.key === 'ArrowRight' && next) void navigate(`${boardPath}/cards/${next.id}`)
       if (event.key === 'Escape') void navigate(boardPath)
@@ -58,7 +64,7 @@ export default function CardDetailPage() {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [prev, next, boardPath, navigate, noteOpen, deleteOpen])
+  }, [prev, next, boardPath, navigate, editOpen, deleteOpen])
 
   if (cards.isSuccess && !card) return <Navigate to={boardPath} replace />
 
@@ -92,7 +98,7 @@ export default function CardDetailPage() {
               icon={ChevronsLeft}
               label="앞으로 옮기기"
               size="sm"
-              disabled={!prev || reorder.isPending}
+              disabled={!canMoveUp || reorder.isPending}
               onClick={() => {
                 move(-1)
               }}
@@ -101,18 +107,19 @@ export default function CardDetailPage() {
               icon={ChevronsRight}
               label="뒤로 옮기기"
               size="sm"
-              disabled={!next || reorder.isPending}
+              disabled={!canMoveDown || reorder.isPending}
               onClick={() => {
                 move(1)
               }}
             />
             <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
+            <PinButton card={card} />
             <IconButton
-              icon={NotebookPen}
-              label="메모"
+              icon={Pencil}
+              label="수정"
               size="sm"
               onClick={() => {
-                setNoteOpen(true)
+                setEditOpen(true)
               }}
             />
             <IconButton
@@ -186,7 +193,7 @@ export default function CardDetailPage() {
 
       {card && (
         <>
-          <NoteDialog card={card} open={noteOpen} onOpenChange={setNoteOpen} />
+          <EditCardDialog card={card} open={editOpen} onOpenChange={setEditOpen} />
           <DeleteCardDialog
             card={card}
             open={deleteOpen}
@@ -201,5 +208,18 @@ export default function CardDetailPage() {
         </>
       )}
     </div>
+  )
+}
+
+function PinButton({ card }: { card: Card }) {
+  const togglePin = useTogglePin(card)
+  return (
+    <IconButton
+      icon={card.pinned ? PinOff : Pin}
+      label={card.pinned ? '고정 해제' : '맨 위에 고정'}
+      size="sm"
+      className={card.pinned ? 'text-accent' : undefined}
+      onClick={togglePin}
+    />
   )
 }

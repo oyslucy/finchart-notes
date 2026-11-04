@@ -17,6 +17,7 @@ export interface Card {
   user_note: string | null
   model: string
   created_at: string
+  pinned: boolean
   image_url: string
   thumb_url: string
 }
@@ -31,7 +32,10 @@ export interface CardCreateResult {
 }
 
 export type CardPatch = Partial<
-  Pick<Card, 'title' | 'period' | 'takeaways' | 'interpretation' | 'caveats' | 'user_note'>
+  Pick<
+    Card,
+    'title' | 'period' | 'takeaways' | 'interpretation' | 'caveats' | 'user_note' | 'pinned'
+  >
 >
 
 export const CHART_TYPE_LABEL: Record<string, string> = {

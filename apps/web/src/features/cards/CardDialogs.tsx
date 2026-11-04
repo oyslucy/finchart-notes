@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { Button } from '../../components/ui/Button.tsx'
 import { Dialog } from '../../components/ui/Dialog.tsx'
-import { Textarea } from '../../components/ui/Field.tsx'
+import { Input, Textarea } from '../../components/ui/Field.tsx'
 import { useToast } from '../../components/ui/toast-context.ts'
 import { errorMessage } from '../../lib/api.ts'
 import type { Card } from '../../lib/types.ts'
@@ -14,20 +14,78 @@ interface DialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function NoteDialog({ card, open, onOpenChange }: DialogProps) {
-  const [note, setNote] = useState(card.user_note ?? '')
+interface Draft {
+  title: string
+  period: string
+  takeaways: [string, string, string]
+  interpretation: string
+  caveats: [string, string]
+  note: string
+}
+
+function draftFrom(card: Card): Draft {
+  const t = card.takeaways
+  const c = card.caveats
+  return {
+    title: card.title,
+    period: card.period ?? '',
+    takeaways: [t[0] ?? '', t[1] ?? '', t[2] ?? ''],
+    interpretation: card.interpretation,
+    caveats: [c[0] ?? '', c[1] ?? ''],
+    note: card.user_note ?? '',
+  }
+}
+
+function compact(items: string[]): string[] {
+  return items.map((i) => i.trim()).filter(Boolean)
+}
+
+export function EditCardDialog({ card, open, onOpenChange }: DialogProps) {
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(card))
   const update = useUpdateCard(card.board_id)
   const toast = useToast()
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    setDraft((d) => ({ ...d, [key]: value }))
+  }
+
+  const save = () => {
+    if (!draft.title.trim()) {
+      toast({ title: '제목을 입력해 주세요', tone: 'danger' })
+      return
+    }
+    update.mutate(
+      {
+        id: card.id,
+        patch: {
+          title: draft.title.trim(),
+          period: draft.period.trim() || null,
+          takeaways: compact(draft.takeaways),
+          interpretation: draft.interpretation.trim(),
+          caveats: compact(draft.caveats),
+          user_note: draft.note.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          onOpenChange(false)
+        },
+        onError: (error) => {
+          toast({ title: '저장하지 못했습니다', description: errorMessage(error), tone: 'danger' })
+        },
+      },
+    )
+  }
 
   return (
     <Dialog
+      size="lg"
       open={open}
       onOpenChange={(next) => {
-        if (next) setNote(card.user_note ?? '')
+        if (next) setDraft(draftFrom(card))
         onOpenChange(next)
       }}
-      title="메모"
-      description={card.title}
+      title="카드 수정"
+      description="분석 내용을 고치거나 메모를 남길 수 있습니다."
       footer={
         <>
           <Button
@@ -38,42 +96,77 @@ export function NoteDialog({ card, open, onOpenChange }: DialogProps) {
           >
             취소
           </Button>
-          <Button
-            variant="primary"
-            disabled={update.isPending}
-            onClick={() => {
-              update.mutate(
-                { id: card.id, patch: { user_note: note.trim() || null } },
-                {
-                  onSuccess: () => {
-                    onOpenChange(false)
-                  },
-                  onError: (error) => {
-                    toast({
-                      title: '저장하지 못했습니다',
-                      description: errorMessage(error),
-                      tone: 'danger',
-                    })
-                  },
-                },
-              )
-            }}
-          >
+          <Button variant="primary" disabled={update.isPending} onClick={save}>
             저장
           </Button>
         </>
       }
     >
-      <Textarea
-        aria-label="메모"
-        autoFocus
-        rows={5}
-        value={note}
-        placeholder="이 차트에서 다시 볼 점을 적어 두세요."
-        onChange={(e) => {
-          setNote(e.target.value)
-        }}
-      />
+      <div className="flex flex-col gap-4 pb-1">
+        <Input
+          label="제목"
+          value={draft.title}
+          maxLength={200}
+          onChange={(e) => {
+            set('title', e.target.value)
+          }}
+        />
+        <Input
+          label="기간"
+          value={draft.period}
+          placeholder="예: 2026.05 ~ 2026.10"
+          onChange={(e) => {
+            set('period', e.target.value)
+          }}
+        />
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="pb-1.5 text-[13px] font-medium text-text-secondary">핵심 관찰</legend>
+          {draft.takeaways.map((value, i) => (
+            <Input
+              key={i}
+              aria-label={`핵심 관찰 ${String(i + 1)}`}
+              value={value}
+              onChange={(e) => {
+                const next = [...draft.takeaways] as Draft['takeaways']
+                next[i] = e.target.value
+                set('takeaways', next)
+              }}
+            />
+          ))}
+        </fieldset>
+        <Textarea
+          label="해설"
+          rows={5}
+          value={draft.interpretation}
+          onChange={(e) => {
+            set('interpretation', e.target.value)
+          }}
+        />
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="pb-1.5 text-[13px] font-medium text-text-secondary">주의</legend>
+          {draft.caveats.map((value, i) => (
+            <Input
+              key={i}
+              aria-label={`주의 ${String(i + 1)}`}
+              value={value}
+              onChange={(e) => {
+                const next = [...draft.caveats] as Draft['caveats']
+                next[i] = e.target.value
+                set('caveats', next)
+              }}
+            />
+          ))}
+        </fieldset>
+        <Textarea
+          label="메모"
+          rows={3}
+          value={draft.note}
+          placeholder="이 차트에서 다시 볼 점을 적어 두세요."
+          onChange={(e) => {
+            set('note', e.target.value)
+          }}
+        />
+      </div>
     </Dialog>
   )
 }
