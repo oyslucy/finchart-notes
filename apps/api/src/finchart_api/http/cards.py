@@ -12,15 +12,18 @@ from finchart_api.domain.cards import (
 )
 from finchart_api.domain.models import Card, CardPatch
 from finchart_api.domain.ports import InvalidOrderError, UserData
+from finchart_api.domain.uploads import (
+    UnsupportedImageError,
+    UploadTooLargeError,
+    check_declared_mime,
+    validate_image_upload,
+)
 from finchart_api.http.deps import CurrentAccount, ServicesDep, UserDataDep
 from finchart_api.http.schemas import CardCreateOut, CardOut, OrderIn, RecentCardOut
-from finchart_api.imaging import InvalidImageError, detect_mime
 from finchart_api.llm.base import VisionProviderError
 
 router = APIRouter(tags=["cards"])
 logger = logging.getLogger("uvicorn.error")
-
-ALLOWED_MIME = {"image/png", "image/jpeg", "image/webp"}
 
 
 def _with_urls(data: UserData, cards: list[Card]) -> list[CardOut]:
@@ -28,16 +31,14 @@ def _with_urls(data: UserData, cards: list[Card]) -> list[CardOut]:
 
 
 async def _read_image(upload: UploadFile, max_bytes: int) -> bytes:
-    if upload.content_type not in ALLOWED_MIME:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "only png, jpeg, webp")
-    data = await upload.read(max_bytes + 1)
-    if len(data) > max_bytes:
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "image too large")
     try:
-        if detect_mime(data) not in ALLOWED_MIME:
-            raise InvalidImageError("unsupported")
-    except InvalidImageError as exc:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "not a valid image") from exc
+        check_declared_mime(upload.content_type)
+        data = await upload.read(max_bytes + 1)
+        validate_image_upload(data, max_bytes)
+    except UploadTooLargeError as exc:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "image too large") from exc
+    except UnsupportedImageError as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "only png, jpeg, webp") from exc
     return data
 
 
