@@ -22,9 +22,12 @@ class Me(BaseModel):
     username: str
 
 
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
 def _client_key(request: Request, username: str) -> str:
-    host = request.client.host if request.client else "unknown"
-    return f"{host}:{username}"
+    return f"{_client_ip(request)}:{username}"
 
 
 async def _sign_in(response: Response, services: ServicesDep, account: Account) -> Me:
@@ -42,10 +45,14 @@ async def _sign_in(response: Response, services: ServicesDep, account: Account) 
 
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
-async def signup(body: Credentials, response: Response, services: ServicesDep) -> Me:
+async def signup(
+    body: Credentials, request: Request, response: Response, services: ServicesDep
+) -> Me:
     username = normalize_username(body.username)
-    if username not in services.settings.allowed_username_set:
+    if not services.settings.is_username_allowed(username):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "username not allowed")
+    if not services.signup_limiter.allow(_client_ip(request)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many signups")
     try:
         account = await services.accounts.create(username, body.password)
     except UsernameTakenError as exc:
@@ -65,7 +72,7 @@ async def login(
     account = await services.accounts.authenticate(username, body.password)
     if account is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
-    if account.username not in services.settings.allowed_username_set:
+    if not services.settings.is_username_allowed(account.username):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "account not allowed")
     return await _sign_in(response, services, account)
 

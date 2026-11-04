@@ -313,3 +313,43 @@ def test_upload_rate_limit_is_per_user(tmp_path: Path) -> None:
 
     assert codes == [201, 201, 429]
     assert upload(bob, board(bob), png(9)).status_code == 201
+
+
+# --- open signup and quotas ---
+
+
+def test_empty_allow_list_means_open_signup(tmp_path: Path) -> None:
+    api = Api(tmp_path, allowed_usernames="")
+    anyone = api.user("random_person")
+    assert anyone.get("/api/boards").status_code == 200
+
+
+def test_signups_are_limited_per_ip(tmp_path: Path) -> None:
+    api = Api(tmp_path, allowed_usernames="", signups_per_ip_per_hour=2)
+    client = api.client()
+
+    codes = [
+        client.post(
+            "/api/auth/signup", json={"username": f"user{i}", "password": PASSWORD}
+        ).status_code
+        for i in range(3)
+    ]
+
+    assert codes == [201, 201, 429]
+
+
+def test_daily_analysis_quota_survives_card_deletion(tmp_path: Path) -> None:
+    api = Api(tmp_path, daily_analyses_per_user=2)
+    alice = api.user("alice")
+    board_id = board(alice)
+    first = upload(alice, board_id, png(1)).json()["card"]["id"]
+    upload(alice, board_id, png(2))
+    alice.delete(f"/api/cards/{first}")
+
+    blocked = upload(alice, board_id, png(3))
+    duplicate = upload(alice, board_id, png(2))
+
+    assert blocked.status_code == 429 and blocked.json()["detail"] == "daily_quota"
+    assert duplicate.status_code == 200 and duplicate.json()["duplicate"] is True
+    bob = api.user("bob")
+    assert upload(bob, board(bob), png(3)).status_code == 201

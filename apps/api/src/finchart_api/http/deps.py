@@ -21,6 +21,7 @@ class Services:
     provider: VisionProvider
     upload_limiter: RateLimiter
     login_limiter: RateLimiter
+    signup_limiter: RateLimiter
 
 
 def get_services(request: Request) -> Services:
@@ -36,7 +37,7 @@ async def get_current_account(request: Request, services: ServicesDep) -> Accoun
     account = await services.accounts.account_for_session(token) if token else None
     if account is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not signed in")
-    if account.username not in services.settings.allowed_username_set:
+    if not services.settings.is_username_allowed(account.username):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "account not allowed")
     return account
 

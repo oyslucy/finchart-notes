@@ -4,17 +4,20 @@ from collections.abc import Callable
 
 
 class RateLimiter:
-    """Sliding one-minute window per key. In-memory is enough for a single worker."""
+    """Sliding window per key. In-memory is enough for a single worker."""
 
-    def __init__(self, per_minute: int, clock: Callable[[], float] = time.monotonic) -> None:
-        self._limit = per_minute
+    def __init__(
+        self, limit: int, window_s: float = 60, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self._limit = limit
+        self._window = window_s
         self._clock = clock
         self._hits: defaultdict[str, deque[float]] = defaultdict(deque)
 
     def allow(self, key: str) -> bool:
         now = self._clock()
         hits = self._hits[key]
-        while hits and now - hits[0] >= 60:
+        while hits and now - hits[0] >= self._window:
             hits.popleft()
         if len(hits) >= self._limit:
             return False

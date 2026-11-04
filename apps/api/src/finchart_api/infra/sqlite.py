@@ -64,6 +64,13 @@ create table if not exists cards (
   unique (owner_id, image_sha256)
 );
 create index if not exists cards_board_position_idx on cards (board_id, position);
+
+-- One row per completed VLM analysis; survives card deletion so daily quotas hold.
+create table if not exists analysis_log (
+  owner_id    text not null references users(id) on delete cascade,
+  created_at  text not null
+);
+create index if not exists analysis_log_owner_idx on analysis_log (owner_id, created_at);
 """
 
 
@@ -257,6 +264,10 @@ class SqliteCards:
                 if "image_sha256" in str(exc):
                     raise DuplicateCardError(card.image_sha256) from exc
                 raise
+            conn.execute(
+                "insert into analysis_log (owner_id, created_at) values (?, ?)",
+                (self._owner, created),
+            )
             return _card(row)
 
         result: Card = await self._db.run(op)
@@ -311,6 +322,17 @@ class SqliteCards:
             )
 
         await self._db.run(op)
+
+    async def analyses_since(self, since: datetime) -> int:
+        def op(conn: sqlite3.Connection) -> int:
+            row = conn.execute(
+                "select count(*) from analysis_log where owner_id = ? and created_at >= ?",
+                (self._owner, since.isoformat()),
+            ).fetchone()
+            return int(row[0])
+
+        result: int = await self._db.run(op)
+        return result
 
 
 class FileStorage:

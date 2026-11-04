@@ -28,6 +28,7 @@ def create_app(
         provider=provider or build_vision_provider(settings),
         upload_limiter=RateLimiter(settings.rate_limit_per_minute),
         login_limiter=RateLimiter(settings.login_attempts_per_minute),
+        signup_limiter=RateLimiter(settings.signups_per_ip_per_hour, window_s=3600),
     )
     for router in (health.router, auth.router, boards.router, cards.router, images.router):
         app.include_router(router, prefix="/api")

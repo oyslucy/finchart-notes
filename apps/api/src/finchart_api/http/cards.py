@@ -4,7 +4,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
-from finchart_api.domain.cards import BoardNotFoundError, create_card, delete_card
+from finchart_api.domain.cards import (
+    BoardNotFoundError,
+    DailyQuotaExceededError,
+    create_card,
+    delete_card,
+)
 from finchart_api.domain.models import Card, CardPatch
 from finchart_api.domain.ports import InvalidOrderError, UserData
 from finchart_api.http.deps import CurrentAccount, ServicesDep, UserDataDep
@@ -49,9 +54,19 @@ async def upload_card(
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many uploads, retry shortly")
     image_bytes = await _read_image(image, services.settings.max_upload_bytes)
     try:
-        result = await create_card(data, services.provider, board_id, image_bytes)
+        result = await create_card(
+            data,
+            services.provider,
+            board_id,
+            image_bytes,
+            daily_quota=services.settings.daily_analyses_per_user,
+        )
     except BoardNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "board not found") from exc
+    except DailyQuotaExceededError as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "daily_quota", headers={"X-Limit": "daily"}
+        ) from exc
     except VisionProviderError as exc:
         logger.warning("analysis failed for board %s: %r (cause: %r)", board_id, exc, exc.__cause__)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "analysis failed, retry later") from exc

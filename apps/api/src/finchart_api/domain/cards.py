@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
 from finchart_api.domain.models import Card, NewCard
@@ -12,6 +13,10 @@ class BoardNotFoundError(LookupError):
     pass
 
 
+class DailyQuotaExceededError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class CardCreation:
     card: Card
@@ -19,7 +24,11 @@ class CardCreation:
 
 
 async def create_card(
-    data: UserData, provider: VisionProvider, board_id: UUID, image_bytes: bytes
+    data: UserData,
+    provider: VisionProvider,
+    board_id: UUID,
+    image_bytes: bytes,
+    daily_quota: int,
 ) -> CardCreation:
     if await data.boards.get(board_id) is None:
         raise BoardNotFoundError(board_id)
@@ -27,6 +36,10 @@ async def create_card(
     existing = await data.cards.find_by_sha(sha256_hex(image_bytes))
     if existing is not None:
         return CardCreation(card=existing, duplicate=True)
+
+    start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    if await data.cards.analyses_since(start_of_day) >= daily_quota:
+        raise DailyQuotaExceededError(daily_quota)
 
     analyzed = await analyze_screenshot(image_bytes, provider)
     image_path = f"{data.owner_id}/{analyzed.sha256}.webp"

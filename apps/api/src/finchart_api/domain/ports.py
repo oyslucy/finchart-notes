@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -31,6 +32,7 @@ class CardRepository(Protocol):
     async def update(self, card_id: UUID, patch: CardPatch) -> Card | None: ...
     async def delete(self, card_id: UUID) -> Card | None: ...
     async def reorder(self, board_id: UUID, card_ids: Sequence[UUID]) -> None: ...
+    async def analyses_since(self, since: datetime) -> int: ...
 
 
 class ImageStorage(Protocol):
