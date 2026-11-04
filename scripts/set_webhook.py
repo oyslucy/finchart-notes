@@ -9,6 +9,8 @@ environment or from an .env file given with --env-file):
     python3 scripts/set_webhook.py delete [--env-file ...]
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
