@@ -73,6 +73,11 @@ export const api = {
   updateCard: (id: string, patch: CardPatch) =>
     request<Card>(`/cards/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteCard: (id: string) => request<undefined>(`/cards/${id}`, { method: 'DELETE' }),
+  moveCard: (id: string, boardId: string) =>
+    request<Card>(`/cards/${id}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ board_id: boardId }),
+    }),
   reorder: (boardId: string, cardIds: string[]) =>
     request<undefined>(`/boards/${boardId}/order`, {
       method: 'PUT',

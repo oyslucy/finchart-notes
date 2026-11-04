@@ -47,4 +47,34 @@ export function MenuItem({ icon, children, onSelect, tone = 'default' }: MenuIte
   )
 }
 
+export function MenuSub({
+  icon,
+  label,
+  children,
+}: {
+  icon: LucideIcon
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <DropdownMenu.Sub>
+      <DropdownMenu.SubTrigger className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-[13px] text-text outline-none select-none data-[highlighted]:bg-bg-muted data-[state=open]:bg-bg-muted">
+        <span className="text-text-muted">
+          <Icon icon={icon} size={14} />
+        </span>
+        <span className="flex-1">{label}</span>
+        <span className="text-text-faint">›</span>
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent
+          sideOffset={4}
+          className="z-50 max-h-[280px] min-w-[160px] overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-pop"
+        >
+          {children}
+        </DropdownMenu.SubContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
+  )
+}
+
 export const MenuSeparator = () => <DropdownMenu.Separator className="my-1 h-px bg-border" />

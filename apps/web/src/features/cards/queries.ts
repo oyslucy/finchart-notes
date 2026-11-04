@@ -66,6 +66,35 @@ export function useDeleteCard(boardId: string) {
   })
 }
 
+export function useMoveCard() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ card, boardId }: { card: Card; boardId: string }) =>
+      api.moveCard(card.id, boardId),
+    onSuccess: (_moved, { card, boardId }) => {
+      void qc.invalidateQueries({ queryKey: cardKeys.recent })
+      void qc.invalidateQueries({ queryKey: cardKeys.board(card.board_id) })
+      void qc.invalidateQueries({ queryKey: cardKeys.board(boardId) })
+    },
+  })
+}
+
+/** Uploads to any board (home composer); creates "Inbox" when the user has no board yet. */
+export function useQuickUpload() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ boardId, file }: { boardId: string | null; file: File }) => {
+      const target = boardId ?? (await api.createBoard('Inbox')).id
+      return { target, result: await api.uploadCard(target, file) }
+    },
+    onSuccess: ({ target }) => {
+      void qc.invalidateQueries({ queryKey: cardKeys.recent })
+      void qc.invalidateQueries({ queryKey: cardKeys.board(target) })
+      void qc.invalidateQueries({ queryKey: ['boards'], exact: true })
+    },
+  })
+}
+
 export function useReorderCards(boardId: string) {
   const qc = useQueryClient()
   const key = cardKeys.board(boardId)
