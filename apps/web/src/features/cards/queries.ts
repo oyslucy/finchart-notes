@@ -5,6 +5,11 @@ import type { Card, CardPatch } from '../../lib/types.ts'
 
 export const cardKeys = {
   board: (boardId: string) => ['boards', boardId, 'cards'] as const,
+  recent: ['cards', 'recent'] as const,
+}
+
+export function useRecentCards() {
+  return useQuery({ queryKey: cardKeys.recent, queryFn: api.listRecentCards })
 }
 
 export function useCards(boardId: string) {
@@ -16,6 +21,7 @@ export function useUploadCard(boardId: string) {
   return useMutation({
     mutationFn: (file: File) => api.uploadCard(boardId, file),
     onSuccess: ({ card, duplicate }) => {
+      void qc.invalidateQueries({ queryKey: cardKeys.recent })
       if (duplicate && card.board_id !== boardId) return
       qc.setQueryData<Card[]>(cardKeys.board(boardId), (prev = []) =>
         prev.some((c) => c.id === card.id) ? prev : [...prev, card],
@@ -29,6 +35,7 @@ export function useUpdateCard(boardId: string) {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: CardPatch }) => api.updateCard(id, patch),
     onSuccess: (card) => {
+      void qc.invalidateQueries({ queryKey: cardKeys.recent })
       qc.setQueryData<Card[]>(cardKeys.board(boardId), (prev = []) =>
         prev.map((c) => (c.id === card.id ? card : c)),
       )
@@ -41,6 +48,7 @@ export function useDeleteCard(boardId: string) {
   return useMutation({
     mutationFn: api.deleteCard,
     onSuccess: (_void, id) => {
+      void qc.invalidateQueries({ queryKey: cardKeys.recent })
       qc.setQueryData<Card[]>(cardKeys.board(boardId), (prev = []) =>
         prev.filter((c) => c.id !== id),
       )

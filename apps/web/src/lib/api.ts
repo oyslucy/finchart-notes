@@ -1,4 +1,4 @@
-import type { Board, Card, CardCreateResult, CardPatch } from './types.ts'
+import type { Board, Card, CardCreateResult, CardPatch, RecentCard } from './types.ts'
 
 export class ApiError extends Error {
   readonly status: number
@@ -46,6 +46,7 @@ export const api = {
     request<Board>(`/boards/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   deleteBoard: (id: string) => request<undefined>(`/boards/${id}`, { method: 'DELETE' }),
 
+  listRecentCards: () => request<RecentCard[]>('/cards'),
   listCards: (boardId: string) => request<Card[]>(`/boards/${boardId}/cards`),
   uploadCard: (boardId: string, file: File) => {
     const form = new FormData()

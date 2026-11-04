@@ -2,8 +2,8 @@ import { createBrowserRouter } from 'react-router'
 
 import AppLayout from '../pages/AppLayout.tsx'
 import BoardPage from '../pages/BoardPage.tsx'
-import BoardsIndexPage from '../pages/BoardsIndexPage.tsx'
 import DesignPage from '../pages/DesignPage.tsx'
+import HomePage from '../pages/HomePage.tsx'
 import LoginPage from '../pages/LoginPage.tsx'
 
 export const router = createBrowserRouter([
@@ -13,7 +13,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: <BoardsIndexPage /> },
+      { index: true, element: <HomePage /> },
       { path: 'boards/:boardId', element: <BoardPage /> },
     ],
   },

@@ -1,7 +1,7 @@
 import { Download, Pencil, Trash2 } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
-import { useCallback, useState, type SyntheticEvent } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router'
+import { useCallback, useEffect, useState, type SyntheticEvent } from 'react'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
 import { Button } from '../components/ui/Button.tsx'
 import { ChartCardSkeleton } from '../components/ui/ChartCard.tsx'
@@ -27,7 +27,7 @@ export default function BoardPage() {
   return (
     <div className="mx-auto flex max-w-[760px] flex-col gap-6 px-6 pt-8 pb-24 md:px-10">
       {board ? <BoardHeader board={board} /> : <Skeleton className="h-8 w-1/2" />}
-      <BoardCards boardId={boardId} />
+      <BoardCards key={boardId} boardId={boardId} />
     </div>
   )
 }
@@ -152,6 +152,13 @@ function BoardCards({ boardId }: { boardId: string }) {
   const reorder = useReorderCards(boardId)
   const toast = useToast()
   const [pending, setPending] = useState(0)
+  const { hash } = useLocation()
+
+  // Arriving from a home thumbnail (#card-<id>): bring that card into view once loaded.
+  useEffect(() => {
+    if (!hash || !cards.isSuccess) return
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }, [hash, cards.isSuccess])
 
   const onFiles = useCallback(
     (files: File[]) => {

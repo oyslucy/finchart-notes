@@ -17,8 +17,12 @@ export interface Card {
   user_note: string | null
   model: string
   created_at: string
-  image_url: string | null
-  thumb_url: string | null
+  image_url: string
+  thumb_url: string
+}
+
+export interface RecentCard extends Card {
+  board_title: string
 }
 
 export interface CardCreateResult {

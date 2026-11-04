@@ -27,7 +27,12 @@ export function CardItem({ card, onMove, isFirst, isLast }: CardItemProps) {
   const toast = useToast()
 
   return (
-    <motion.div layout {...appear} className="break-inside-avoid">
+    <motion.div
+      layout
+      {...appear}
+      id={`card-${card.id}`}
+      className="scroll-mt-6 break-inside-avoid"
+    >
       <ChartCard
         card={{
           title: card.title,

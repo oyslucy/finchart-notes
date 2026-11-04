@@ -26,6 +26,7 @@ export function useRenameBoard() {
   return useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => api.renameBoard(id, title),
     onSuccess: (board) => {
+      void qc.invalidateQueries({ queryKey: ['cards', 'recent'] })
       qc.setQueryData<Board[]>(boardKeys.all, (prev = []) =>
         prev.map((b) => (b.id === board.id ? board : b)),
       )
@@ -38,6 +39,7 @@ export function useDeleteBoard() {
   return useMutation({
     mutationFn: api.deleteBoard,
     onSuccess: (_void, id) => {
+      void qc.invalidateQueries({ queryKey: ['cards', 'recent'] })
       qc.setQueryData<Board[]>(boardKeys.all, (prev = []) => prev.filter((b) => b.id !== id))
     },
   })
