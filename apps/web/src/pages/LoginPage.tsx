@@ -5,6 +5,7 @@ import { Navigate } from 'react-router'
 
 import { Button } from '../components/ui/Button.tsx'
 import { Input } from '../components/ui/Field.tsx'
+import { LogoMark } from '../components/ui/Logo.tsx'
 import { cx } from '../design/cx.ts'
 import { appear } from '../design/motion.ts'
 import {
@@ -75,7 +76,10 @@ export default function LoginPage() {
     <main className="grid min-h-dvh place-items-center px-6">
       <motion.div {...appear} className="flex w-full max-w-[360px] flex-col gap-8">
         <div className="flex flex-col gap-2">
-          <h1 className="text-[26px]">finchart-notes</h1>
+          <h1 className="flex items-center gap-2.5 text-[26px]">
+            <LogoMark size={28} />
+            finchart-notes
+          </h1>
           <p className="text-[14px] text-text-muted">
             차트 스크린샷을 올리면 메인 차트만 잘라 해설을 붙여 둡니다.
           </p>

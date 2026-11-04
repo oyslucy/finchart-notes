@@ -1,9 +1,10 @@
-import { LayoutGrid, LogOut, Plus } from 'lucide-react'
+import { House, LayoutGrid, LogOut, Plus } from 'lucide-react'
 import { useState, type SyntheticEvent } from 'react'
-import { Link, Navigate, Outlet, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 
 import { Input } from '../components/ui/Field.tsx'
 import { IconButton } from '../components/ui/IconButton.tsx'
+import { Logo } from '../components/ui/Logo.tsx'
 import { SidebarItem, SidebarSection } from '../components/ui/SidebarItem.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
@@ -29,6 +30,7 @@ export default function AppLayout() {
 
 function Sidebar({ username }: { username: string }) {
   const { boardId } = useParams()
+  const { pathname } = useLocation()
   const boards = useBoards()
   const [creating, setCreating] = useState(false)
   const signOut = useSignOut()
@@ -38,14 +40,16 @@ function Sidebar({ username }: { username: string }) {
       data-print-hide
       className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col border-r border-border bg-bg-subtle px-2.5 py-3 md:flex"
     >
-      <Link
-        to="/"
-        className="flex h-8 items-center px-2 text-[14px] font-semibold tracking-[-0.01em]"
-      >
-        finchart-notes
+      <Link to="/" className="flex h-8 items-center px-2" aria-label="finchart-notes 홈">
+        <Logo />
       </Link>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="pt-3">
+          <SidebarItem href="/" icon={House} active={pathname === '/'} asLink>
+            홈
+          </SidebarItem>
+        </div>
         <SidebarSection title="보드">
           {boards.isPending &&
             [0, 1, 2].map((i) => <Skeleton key={i} className="mx-2 my-1.5 h-4" />)}
