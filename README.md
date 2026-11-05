@@ -78,14 +78,4 @@ cd apps/web && npm run lint && npm run typecheck
 
 ## Deployment
 
-Pushing to `main` runs CI, builds the image, pushes it to GHCR and redeploys the VM over SSH. [`docs/DEPLOY.md`](docs/DEPLOY.md) covers first-time VM setup, environment variables, the Telegram webhook and restoring backups. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) explains how the pieces fit together.
-
-## Demo animations
-
-The GIFs above are scripted scenes in [`showcase/`](showcase), built with the Stageshow kit (MIT, see `showcase/kit/LICENSE`). To re-record them:
-
-```bash
-cd showcase && npm install && npm run dev
-node scripts/record.mjs "http://localhost:5180/?capture=web" --out ../docs/assets/web.gif --ms 10000
-node scripts/record.mjs "http://localhost:5180/?capture=telegram" --out ../docs/assets/telegram.gif --ms 9600
-```
+Pushing to `main` runs CI, builds the image, pushes it to GHCR and redeploys the VM over SSH. [`docs/DEPLOY.md`](docs/DEPLOY.md) covers first-time VM setup, environment variables, the Telegram webhook and restoring backups. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) explains how the pieces fit together
