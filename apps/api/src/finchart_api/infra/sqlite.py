@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 from fastapi.concurrency import run_in_threadpool
 
+from finchart_api.domain.analysis import ChartAnalysis
 from finchart_api.domain.models import Board, Card, CardPatch, NewCard
 from finchart_api.domain.ports import DuplicateCardError, InvalidOrderError, UserData
 
@@ -412,6 +413,40 @@ class SqliteCards:
 
         await self._db.run(op)
 
+    async def replace_analysis(
+        self, card_id: UUID, analysis: ChartAnalysis, model: str, raw: dict[str, object]
+    ) -> Card | None:
+        """Overwrites the model's text (not the user's note) and logs the analysis for the quota."""
+
+        def op(conn: sqlite3.Connection) -> Card | None:
+            row = conn.execute(
+                """update cards set title = ?, chart_type = ?, period = ?, takeaways = ?,
+                     interpretation = ?, caveats = ?, model = ?, raw_response = ?
+                   where id = ? and owner_id = ? returning *""",
+                (
+                    analysis.title,
+                    analysis.chart_type,
+                    analysis.period,
+                    json.dumps(analysis.takeaways, ensure_ascii=False),
+                    analysis.interpretation,
+                    json.dumps(analysis.caveats, ensure_ascii=False),
+                    model,
+                    json.dumps(raw, ensure_ascii=False),
+                    str(card_id),
+                    self._owner,
+                ),
+            ).fetchone()
+            if row is None:
+                return None
+            conn.execute(
+                "insert into analysis_log (owner_id, created_at) values (?, ?)",
+                (self._owner, _now()),
+            )
+            return _card(row)
+
+        result: Card | None = await self._db.run(op)
+        return result
+
     async def analyses_since(self, since: datetime) -> int:
         def op(conn: sqlite3.Connection) -> int:
             row = conn.execute(
@@ -456,6 +491,10 @@ class FileStorage:
                 t.unlink(missing_ok=True)
 
         await run_in_threadpool(unlink)
+
+    async def read(self, path: str) -> bytes | None:
+        file = self.file_for(path)
+        return None if file is None else await run_in_threadpool(file.read_bytes)
 
     def url(self, path: str) -> str:
         return f"/api/images/{path}"

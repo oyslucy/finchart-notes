@@ -59,3 +59,10 @@ class MoveIn(BaseModel):
 
 class OrderIn(BaseModel):
     card_ids: list[UUID]
+
+
+class QuotaOut(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+    resets_at: datetime

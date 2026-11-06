@@ -111,6 +111,8 @@ telegram_updates     (update_id pk, received_at)   -- 웹훅 재전송 멱등성
 | POST / GET | `/api/boards/{id}/cards` | 이미지 업로드 → 카드 생성 (맨 앞에 추가) / 카드 목록 (고정 카드 먼저) |
 | PUT | `/api/boards/{id}/order` | 카드 순서 변경 (`card_ids` 배열) |
 | PATCH / DELETE | `/api/cards/{id}` | 텍스트, 메모, 고정(`pinned`) 수정 / 삭제 |
+| POST | `/api/cards/{id}/reanalyze` | 저장된 크롭 이미지로 해설만 다시 받는다. 메모와 이미지는 그대로 두고, 하루 분석 횟수에 포함된다 |
+| GET | `/api/quota` | 오늘 분석 횟수 (`limit`, `used`, `remaining`, `resets_at`, 매일 00:00 UTC 초기화) |
 | GET | `/api/images/{path}` | 카드 이미지 (소유자만) |
 | POST | `/api/telegram/link-token` | 1회용 연결 링크 `https://t.me/<봇>?start=<토큰>` 발급 (10분) |
 | GET | `/api/telegram/status` | 연결 여부, 연결된 텔레그램 아이디 |

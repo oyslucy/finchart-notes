@@ -6,9 +6,12 @@ from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 
 from finchart_api.domain.cards import (
     BoardNotFoundError,
+    CardNotFoundError,
     DailyQuotaExceededError,
     create_card,
+    daily_usage,
     delete_card,
+    reanalyze_card,
 )
 from finchart_api.domain.models import Card, CardPatch
 from finchart_api.domain.ports import InvalidOrderError, UserData
@@ -19,7 +22,14 @@ from finchart_api.domain.uploads import (
     validate_image_upload,
 )
 from finchart_api.http.deps import CurrentAccount, ServicesDep, UserDataDep
-from finchart_api.http.schemas import CardCreateOut, CardOut, MoveIn, OrderIn, RecentCardOut
+from finchart_api.http.schemas import (
+    CardCreateOut,
+    CardOut,
+    MoveIn,
+    OrderIn,
+    QuotaOut,
+    RecentCardOut,
+)
 from finchart_api.llm.base import VisionProviderError
 
 router = APIRouter(tags=["cards"])
@@ -42,6 +52,29 @@ async def _read_image(upload: UploadFile, max_bytes: int) -> bytes:
     return data
 
 
+def _check_rate(services: ServicesDep, account: CurrentAccount) -> None:
+    if not services.upload_limiter.allow(str(account.id)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many uploads, retry shortly")
+
+
+def _quota_exceeded() -> HTTPException:
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS, "daily_quota", headers={"X-Limit": "daily"}
+    )
+
+
+def _analysis_failed() -> HTTPException:
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, "analysis failed, retry later")
+
+
+@router.get("/quota")
+async def get_quota(services: ServicesDep, data: UserDataDep) -> QuotaOut:
+    usage = await daily_usage(data, services.settings.daily_analyses_per_user)
+    return QuotaOut(
+        limit=usage.limit, used=usage.used, remaining=usage.remaining, resets_at=usage.resets_at
+    )
+
+
 @router.post("/boards/{board_id}/cards", status_code=status.HTTP_201_CREATED)
 async def upload_card(
     board_id: UUID,
@@ -51,8 +84,7 @@ async def upload_card(
     data: UserDataDep,
     response: Response,
 ) -> CardCreateOut:
-    if not services.upload_limiter.allow(str(account.id)):
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many uploads, retry shortly")
+    _check_rate(services, account)
     image_bytes = await _read_image(image, services.settings.max_upload_bytes)
     try:
         result = await create_card(
@@ -65,12 +97,10 @@ async def upload_card(
     except BoardNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "board not found") from exc
     except DailyQuotaExceededError as exc:
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS, "daily_quota", headers={"X-Limit": "daily"}
-        ) from exc
+        raise _quota_exceeded() from exc
     except VisionProviderError as exc:
         logger.warning("analysis failed for board %s: %r (cause: %r)", board_id, exc, exc.__cause__)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "analysis failed, retry later") from exc
+        raise _analysis_failed() from exc
     if result.duplicate:
         response.status_code = status.HTTP_200_OK
     [card] = _with_urls(data, [result.card])
@@ -128,6 +158,26 @@ async def move_card(card_id: UUID, body: MoveIn, data: UserDataDep) -> CardOut:
     card = await data.cards.move(card_id, body.board_id)
     if card is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "card or board not found")
+    [out] = _with_urls(data, [card])
+    return out
+
+
+@router.post("/cards/{card_id}/reanalyze")
+async def reanalyze(
+    card_id: UUID, account: CurrentAccount, services: ServicesDep, data: UserDataDep
+) -> CardOut:
+    _check_rate(services, account)
+    try:
+        card = await reanalyze_card(
+            data, services.provider, card_id, services.settings.daily_analyses_per_user
+        )
+    except CardNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "card not found") from exc
+    except DailyQuotaExceededError as exc:
+        raise _quota_exceeded() from exc
+    except VisionProviderError as exc:
+        logger.warning("reanalysis failed for card %s: %r (cause: %r)", card_id, exc, exc.__cause__)
+        raise _analysis_failed() from exc
     [out] = _with_urls(data, [card])
     return out
 

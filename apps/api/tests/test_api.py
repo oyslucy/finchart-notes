@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from finchart_api.config import Settings
+from finchart_api.domain.analysis import VisionResult
+from finchart_api.llm.base import VisionProviderError
 from finchart_api.main import create_app
 
 from .conftest import FakeProvider, make_png
@@ -370,6 +372,68 @@ def test_daily_analysis_quota_survives_card_deletion(tmp_path: Path) -> None:
     assert duplicate.status_code == 200 and duplicate.json()["duplicate"] is True
     bob = api.user("bob")
     assert upload(bob, board(bob), png(3)).status_code == 201
+
+
+def test_quota_reports_remaining_analyses(tmp_path: Path) -> None:
+    api = Api(tmp_path, daily_analyses_per_user=3)
+    alice = api.user("alice")
+    assert alice.get("/api/quota").json()["remaining"] == 3
+    upload(alice, board(alice), png(1))
+
+    quota = alice.get("/api/quota").json()
+
+    assert quota["limit"] == 3 and quota["used"] == 1 and quota["remaining"] == 2
+    assert "T00:00:00" in quota["resets_at"]
+
+
+def test_reanalyze_replaces_text_but_keeps_note_and_image(api: Api) -> None:
+    alice = api.user("alice")
+    card = upload(alice, board(alice), png(1)).json()["card"]
+    alice.patch(f"/api/cards/{card['id']}", json={"user_note": "내 메모", "title": "손댄 제목"})
+    api.provider.analysis = api.provider.analysis.model_copy(update={"title": "새 해석"})
+
+    r = alice.post(f"/api/cards/{card['id']}/reanalyze")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["title"] == "새 해석" and body["user_note"] == "내 메모"
+    assert body["image_url"] == card["image_url"]
+    assert api.provider.calls == 2
+    assert alice.get("/api/quota").json()["used"] == 2
+
+
+def test_reanalyze_counts_toward_daily_quota(tmp_path: Path) -> None:
+    api = Api(tmp_path, daily_analyses_per_user=1)
+    alice = api.user("alice")
+    card_id = upload(alice, board(alice), png(1)).json()["card"]["id"]
+
+    r = alice.post(f"/api/cards/{card_id}/reanalyze")
+
+    assert r.status_code == 429 and r.json()["detail"] == "daily_quota"
+    assert api.provider.calls == 1
+
+
+def test_reanalyze_other_users_card_is_not_found(api: Api) -> None:
+    alice, bob = api.user("alice"), api.user("bob")
+    card_id = upload(alice, board(alice), png(1)).json()["card"]["id"]
+
+    assert bob.post(f"/api/cards/{card_id}/reanalyze").status_code == 404
+
+
+def test_reanalyze_failure_keeps_card_unchanged(api: Api) -> None:
+    alice = api.user("alice")
+    card = upload(alice, board(alice), png(1)).json()["card"]
+
+    async def fail(image_bytes: bytes) -> VisionResult:
+        raise VisionProviderError("boom")
+
+    api.provider.analyze = fail  # type: ignore[method-assign]
+    r = alice.post(f"/api/cards/{card['id']}/reanalyze")
+
+    assert r.status_code == 502
+    [listed] = alice.get(f"/api/boards/{card['board_id']}/cards").json()
+    assert listed["title"] == card["title"]
+    assert alice.get("/api/quota").json()["used"] == 1
 
 
 def test_recent_cards_span_boards_newest_first(api: Api) -> None:

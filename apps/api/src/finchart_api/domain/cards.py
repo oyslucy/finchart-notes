@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from finchart_api.domain.models import Card, NewCard
@@ -13,8 +13,38 @@ class BoardNotFoundError(LookupError):
     pass
 
 
+class CardNotFoundError(LookupError):
+    pass
+
+
 class DailyQuotaExceededError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class DailyUsage:
+    limit: int
+    used: int
+    resets_at: datetime
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limit - self.used)
+
+
+def _start_of_day() -> datetime:
+    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+async def daily_usage(data: UserData, daily_quota: int) -> DailyUsage:
+    start = _start_of_day()
+    used = await data.cards.analyses_since(start)
+    return DailyUsage(limit=daily_quota, used=used, resets_at=start + timedelta(days=1))
+
+
+async def _ensure_quota(data: UserData, daily_quota: int) -> None:
+    if (await daily_usage(data, daily_quota)).remaining <= 0:
+        raise DailyQuotaExceededError(daily_quota)
 
 
 @dataclass(frozen=True)
@@ -37,10 +67,7 @@ async def create_card(
     if existing is not None:
         return CardCreation(card=existing, duplicate=True)
 
-    start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    if await data.cards.analyses_since(start_of_day) >= daily_quota:
-        raise DailyQuotaExceededError(daily_quota)
-
+    await _ensure_quota(data, daily_quota)
     analyzed = await analyze_screenshot(image_bytes, provider)
     image_path = f"{data.owner_id}/{analyzed.sha256}.webp"
     thumb_path = f"{data.owner_id}/{analyzed.sha256}_thumb.webp"
@@ -73,6 +100,25 @@ async def create_card(
         if winner is None:
             raise
         return CardCreation(card=winner, duplicate=True)
+
+
+async def reanalyze_card(
+    data: UserData, provider: VisionProvider, card_id: UUID, daily_quota: int
+) -> Card:
+    """Asks the model again about the stored crop; the image and the user's note stay as they are.
+
+    Only the crop is kept, so its bbox is ignored rather than cropping a second time.
+    """
+    card = await data.cards.get(card_id)
+    image = None if card is None else await data.storage.read(card.image_path)
+    if card is None or image is None:
+        raise CardNotFoundError(card_id)
+    await _ensure_quota(data, daily_quota)
+    vision = await provider.analyze(image)
+    updated = await data.cards.replace_analysis(card_id, vision.analysis, vision.model, vision.raw)
+    if updated is None:
+        raise CardNotFoundError(card_id)
+    return updated
 
 
 async def delete_card(data: UserData, card_id: UUID) -> bool:
