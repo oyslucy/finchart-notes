@@ -7,6 +7,7 @@ import { cx } from '../../design/cx.ts'
 import { errorMessage } from '../../lib/api.ts'
 import type { Board } from '../../lib/types.ts'
 import { useCreateBoard } from '../boards/queries.ts'
+import { QuotaNote } from './QuotaNote.tsx'
 import { UploadZone } from './UploadZone.tsx'
 import { useBoardDrop } from './useBoardDrop.ts'
 
@@ -30,6 +31,7 @@ export function HomeComposer({ boards, selectedId, onSelect, onFiles, busy }: Ho
         variant="bare"
         onFiles={onFiles}
         busy={busy}
+        aside={<QuotaNote />}
         hint={
           selected
             ? `‘${selected.title}’ 보드에 저장됩니다`

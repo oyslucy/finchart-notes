@@ -1,5 +1,5 @@
 import { ImageUp } from 'lucide-react'
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 
 import { Icon } from '../../components/ui/Icon.tsx'
 import { Kbd } from '../../components/ui/Kbd.tsx'
@@ -24,9 +24,11 @@ interface UploadZoneProps {
   /** "bare" drops the frame so the zone can sit inside another panel. */
   variant?: 'framed' | 'bare'
   hint?: string
+  /** Shown beside the file button, e.g. the analyses left today. */
+  aside?: ReactNode
 }
 
-export function UploadZone({ onFiles, busy, variant = 'framed', hint }: UploadZoneProps) {
+export function UploadZone({ onFiles, busy, variant = 'framed', hint, aside }: UploadZoneProps) {
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -87,14 +89,17 @@ export function UploadZone({ onFiles, busy, variant = 'framed', hint }: UploadZo
           {hint && <span className="text-[12px] text-text-faint">{hint}</span>}
         </span>
       </div>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => input.current?.click()}
-        className="shrink-0 rounded-md px-2 py-1 text-[13px] font-medium text-accent hover:bg-accent-subtle disabled:opacity-45"
-      >
-        파일 선택
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        {aside}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => input.current?.click()}
+          className="shrink-0 rounded-md px-2 py-1 text-[13px] font-medium text-accent hover:bg-accent-subtle disabled:opacity-45"
+        >
+          파일 선택
+        </button>
+      </div>
       <input
         ref={input}
         type="file"

@@ -6,7 +6,7 @@ import { Input, Textarea } from '../../components/ui/Field.tsx'
 import { useToast } from '../../components/ui/toast-context.ts'
 import { errorMessage } from '../../lib/api.ts'
 import type { Card } from '../../lib/types.ts'
-import { useDeleteCard, useUpdateCard } from './queries.ts'
+import { useDeleteCard, useQuota, useReanalyzeCard, useUpdateCard } from './queries.ts'
 
 interface DialogProps {
   card: Card
@@ -220,5 +220,71 @@ export function DeleteCardDialog({
         </>
       }
     />
+  )
+}
+
+/** Confirms first: the new answer replaces any text the user edited by hand. */
+export function ReanalyzeCardDialog({ card, open, onOpenChange }: DialogProps) {
+  const reanalyze = useReanalyzeCard(card.board_id)
+  const quota = useQuota()
+  const toast = useToast()
+  const remaining = quota.data?.remaining
+  const exhausted = remaining === 0
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!reanalyze.isPending) onOpenChange(next)
+      }}
+      title="해설을 다시 받을까요?"
+      description="잘라 둔 차트로 제목과 해설을 새로 받습니다. 직접 고친 내용은 새 결과로 바뀌고, 메모와 이미지는 그대로 둡니다."
+      footer={
+        <>
+          <Button
+            variant="ghost"
+            disabled={reanalyze.isPending}
+            onClick={() => {
+              onOpenChange(false)
+            }}
+          >
+            취소
+          </Button>
+          <Button
+            variant="primary"
+            disabled={reanalyze.isPending || exhausted}
+            onClick={() => {
+              reanalyze.mutate(card.id, {
+                onSuccess: (updated) => {
+                  onOpenChange(false)
+                  toast({
+                    title: '해설을 다시 받았습니다',
+                    description: updated.title,
+                    tone: 'success',
+                  })
+                },
+                onError: (error) => {
+                  toast({
+                    title: '다시 분석하지 못했습니다',
+                    description: errorMessage(error),
+                    tone: 'danger',
+                  })
+                },
+              })
+            }}
+          >
+            {reanalyze.isPending ? '분석 중…' : '다시 분석'}
+          </Button>
+        </>
+      }
+    >
+      {remaining !== undefined && (
+        <p className="pb-1 text-[13px] text-text-muted">
+          {exhausted
+            ? '오늘 분석 횟수를 모두 썼습니다.'
+            : `오늘 남은 분석 ${String(remaining)}회 중 1회를 씁니다.`}
+        </p>
+      )}
+    </Dialog>
   )
 }

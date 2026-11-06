@@ -1,4 +1,13 @@
-import { FolderInput, LayoutGrid, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import {
+  FolderInput,
+  LayoutGrid,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
 import { useState } from 'react'
 
 import { IconButton } from '../../components/ui/IconButton.tsx'
@@ -8,14 +17,15 @@ import { cx } from '../../design/cx.ts'
 import { errorMessage } from '../../lib/api.ts'
 import type { Card } from '../../lib/types.ts'
 import { useBoards } from '../boards/queries.ts'
-import { DeleteCardDialog, EditCardDialog } from './CardDialogs.tsx'
+import { DeleteCardDialog, EditCardDialog, ReanalyzeCardDialog } from './CardDialogs.tsx'
 import { useMoveCard } from './queries.ts'
 import { useTogglePin } from './useTogglePin.ts'
 
-/** The "⋯" menu on a thumbnail: pin, edit, delete. */
+/** The "⋯" menu on a thumbnail: pin, edit, reanalyze, move, delete. */
 export function CardActionsMenu({ card, className }: { card: Card; className?: string }) {
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [reanalyzeOpen, setReanalyzeOpen] = useState(false)
   const togglePin = useTogglePin(card)
   const boards = useBoards()
   const move = useMoveCard()
@@ -48,6 +58,14 @@ export function CardActionsMenu({ card, className }: { card: Card; className?: s
           }}
         >
           수정
+        </MenuItem>
+        <MenuItem
+          icon={RefreshCw}
+          onSelect={() => {
+            setReanalyzeOpen(true)
+          }}
+        >
+          다시 분석
         </MenuItem>
         {others.length > 0 && (
           <MenuSub icon={FolderInput} label="보드 이동">
@@ -90,6 +108,7 @@ export function CardActionsMenu({ card, className }: { card: Card; className?: s
         </MenuItem>
       </Menu>
       <EditCardDialog card={card} open={editOpen} onOpenChange={setEditOpen} />
+      <ReanalyzeCardDialog card={card} open={reanalyzeOpen} onOpenChange={setReanalyzeOpen} />
       <DeleteCardDialog
         card={card}
         open={deleteOpen}

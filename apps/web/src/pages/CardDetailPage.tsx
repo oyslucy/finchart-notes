@@ -7,6 +7,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  RefreshCw,
   Trash2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -19,7 +20,11 @@ import { Kbd } from '../components/ui/Kbd.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
 import { durations, easeOut } from '../design/motion.ts'
 import { useBoards } from '../features/boards/queries.ts'
-import { DeleteCardDialog, EditCardDialog } from '../features/cards/CardDialogs.tsx'
+import {
+  DeleteCardDialog,
+  EditCardDialog,
+  ReanalyzeCardDialog,
+} from '../features/cards/CardDialogs.tsx'
 import { useCards, useReorderCards } from '../features/cards/queries.ts'
 import { useTogglePin } from '../features/cards/useTogglePin.ts'
 import { errorMessage } from '../lib/api.ts'
@@ -40,6 +45,7 @@ export default function CardDetailPage() {
   const navigate = useNavigate()
   const toast = useToast()
   const [editOpen, setEditOpen] = useState(false)
+  const [reanalyzeOpen, setReanalyzeOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const list = cards.data ?? []
@@ -55,7 +61,7 @@ export default function CardDetailPage() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isTyping(event.target) || editOpen || deleteOpen) return
+      if (isTyping(event.target) || editOpen || deleteOpen || reanalyzeOpen) return
       if (event.key === 'ArrowLeft' && prev) void navigate(`${boardPath}/cards/${prev.id}`)
       if (event.key === 'ArrowRight' && next) void navigate(`${boardPath}/cards/${next.id}`)
       if (event.key === 'Escape') void navigate(boardPath)
@@ -64,7 +70,7 @@ export default function CardDetailPage() {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [prev, next, boardPath, navigate, editOpen, deleteOpen])
+  }, [prev, next, boardPath, navigate, editOpen, deleteOpen, reanalyzeOpen])
 
   if (cards.isSuccess && !card) return <Navigate to={boardPath} replace />
 
@@ -120,6 +126,14 @@ export default function CardDetailPage() {
               size="sm"
               onClick={() => {
                 setEditOpen(true)
+              }}
+            />
+            <IconButton
+              icon={RefreshCw}
+              label="다시 분석"
+              size="sm"
+              onClick={() => {
+                setReanalyzeOpen(true)
               }}
             />
             <IconButton
@@ -194,6 +208,7 @@ export default function CardDetailPage() {
       {card && (
         <>
           <EditCardDialog card={card} open={editOpen} onOpenChange={setEditOpen} />
+          <ReanalyzeCardDialog card={card} open={reanalyzeOpen} onOpenChange={setReanalyzeOpen} />
           <DeleteCardDialog
             card={card}
             open={deleteOpen}

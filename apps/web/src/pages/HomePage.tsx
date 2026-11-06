@@ -8,12 +8,12 @@ import { useToast } from '../components/ui/toast-context.ts'
 import { useBoards } from '../features/boards/queries.ts'
 import { HomeComposer } from '../features/cards/HomeComposer.tsx'
 import { useQuickUpload, useRecentCards } from '../features/cards/queries.ts'
+import { uploadFailed } from '../features/cards/uploadToast.ts'
 import {
   THUMBNAIL_GRID as GRID,
   ThumbnailCard,
   ThumbnailSkeleton,
 } from '../features/cards/ThumbnailCard.tsx'
-import { errorMessage } from '../lib/api.ts'
 import { useDebounced } from '../lib/useDebounced.ts'
 
 const BOARD_KEY = 'finchart-home-board'
@@ -33,7 +33,8 @@ function useComposerUploads(boardId: string | null, onBoardCreated: (id: string)
   const [pending, setPending] = useState(0)
 
   const onFiles = useCallback(
-    (files: File[]) => {
+    // Named so a failed file's retry goes through the same queue
+    function run(files: File[]) {
       setPending((n) => n + files.length)
       let target = boardId
       void files.reduce(async (previous, file) => {
@@ -50,11 +51,11 @@ function useComposerUploads(boardId: string | null, onBoardCreated: (id: string)
               : { title: '카드를 추가했습니다', description: result.card.title, tone: 'success' },
           )
         } catch (error) {
-          toast({
-            title: `${file.name} 분석 실패`,
-            description: errorMessage(error),
-            tone: 'danger',
-          })
+          toast(
+            uploadFailed(file, error, () => {
+              run([file])
+            }),
+          )
         } finally {
           setPending((n) => n - 1)
         }

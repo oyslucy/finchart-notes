@@ -8,6 +8,13 @@ export const cardKeys = {
   recent: ['cards', 'recent'] as const,
 }
 
+export const quotaKey = ['quota'] as const
+
+export function useQuota() {
+  // Telegram uploads use the same quota, so refresh on focus and now and then.
+  return useQuery({ queryKey: quotaKey, queryFn: api.quota, refetchInterval: 5 * 60_000 })
+}
+
 export function useRecentCards(query = '') {
   return useQuery({
     queryKey: [...cardKeys.recent, query],
@@ -24,6 +31,7 @@ export function useUploadCard(boardId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (file: File) => api.uploadCard(boardId, file),
+    onSettled: () => qc.invalidateQueries({ queryKey: quotaKey }),
     onSuccess: ({ card, duplicate }) => {
       void qc.invalidateQueries({ queryKey: cardKeys.recent })
       if (duplicate && card.board_id !== boardId) return
@@ -49,6 +57,21 @@ export function useUpdateCard(boardId: string) {
       // Pinning changes the order, which only the server knows exactly.
       if (patch.pinned !== undefined)
         void qc.invalidateQueries({ queryKey: cardKeys.board(boardId) })
+    },
+  })
+}
+
+/** Asks the model again about the card's crop; the server keeps the image and the note. */
+export function useReanalyzeCard(boardId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: api.reanalyzeCard,
+    onSettled: () => qc.invalidateQueries({ queryKey: quotaKey }),
+    onSuccess: (card) => {
+      void qc.invalidateQueries({ queryKey: cardKeys.recent })
+      qc.setQueryData<Card[]>(cardKeys.board(boardId), (prev = []) =>
+        prev.map((c) => (c.id === card.id ? card : c)),
+      )
     },
   })
 }
@@ -87,6 +110,7 @@ export function useQuickUpload() {
       const target = boardId ?? (await api.createBoard('Inbox')).id
       return { target, result: await api.uploadCard(target, file) }
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: quotaKey }),
     onSuccess: ({ target }) => {
       void qc.invalidateQueries({ queryKey: cardKeys.recent })
       void qc.invalidateQueries({ queryKey: cardKeys.board(target) })

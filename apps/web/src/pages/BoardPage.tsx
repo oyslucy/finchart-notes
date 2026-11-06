@@ -11,6 +11,7 @@ import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
 import { useBoards, useDeleteBoard, useRenameBoard } from '../features/boards/queries.ts'
 import { useCards, useUploadCard } from '../features/cards/queries.ts'
+import { QuotaNote } from '../features/cards/QuotaNote.tsx'
 import {
   THUMBNAIL_GRID,
   ThumbnailCard,
@@ -19,6 +20,7 @@ import {
 import { ExportDialog, type ExportSelection } from '../features/cards/ExportDialog.tsx'
 import { PrintBoard } from '../features/cards/PrintBoard.tsx'
 import { UploadZone } from '../features/cards/UploadZone.tsx'
+import { uploadFailed } from '../features/cards/uploadToast.ts'
 import { exportPdf } from '../features/cards/print.ts'
 import { cx } from '../design/cx.ts'
 import { errorMessage } from '../lib/api.ts'
@@ -206,7 +208,8 @@ function BoardCards({ boardId }: { boardId: string }) {
   const [pending, setPending] = useState(0)
 
   const onFiles = useCallback(
-    (files: File[]) => {
+    // Named so a failed file's retry goes through the same queue
+    function run(files: File[]) {
       setPending((n) => n + files.length)
       void files.reduce(async (previous, file) => {
         await previous
@@ -214,11 +217,11 @@ function BoardCards({ boardId }: { boardId: string }) {
           const { duplicate } = await upload.mutateAsync(file)
           if (duplicate) toast({ title: '이미 올린 이미지라 기존 분석을 불러왔습니다' })
         } catch (error) {
-          toast({
-            title: `${file.name} 분석 실패`,
-            description: errorMessage(error),
-            tone: 'danger',
-          })
+          toast(
+            uploadFailed(file, error, () => {
+              run([file])
+            }),
+          )
         } finally {
           setPending((n) => n - 1)
         }
@@ -229,7 +232,7 @@ function BoardCards({ boardId }: { boardId: string }) {
 
   return (
     <>
-      <UploadZone onFiles={onFiles} busy={pending > 0} />
+      <UploadZone onFiles={onFiles} busy={pending > 0} aside={<QuotaNote />} />
       {(cards.data?.length ?? 0) > 0 && (
         <p className="-mt-3 hidden text-[12px] text-text-faint md:block">
           카드를 끌어 다른 보드에 놓으면 옮겨집니다. 메뉴의 보드 이동으로도 옮길 수 있습니다.

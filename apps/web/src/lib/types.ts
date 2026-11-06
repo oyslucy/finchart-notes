@@ -31,6 +31,13 @@ export interface CardCreateResult {
   duplicate: boolean
 }
 
+export interface Quota {
+  limit: number
+  used: number
+  remaining: number
+  resets_at: string
+}
+
 export type CardPatch = Partial<
   Pick<
     Card,

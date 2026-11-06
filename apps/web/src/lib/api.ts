@@ -1,4 +1,4 @@
-import type { Board, Card, CardCreateResult, CardPatch, RecentCard } from './types.ts'
+import type { Board, Card, CardCreateResult, CardPatch, Quota, RecentCard } from './types.ts'
 
 export class ApiError extends Error {
   readonly status: number
@@ -72,6 +72,8 @@ export const api = {
   },
   updateCard: (id: string, patch: CardPatch) =>
     request<Card>(`/cards/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  reanalyzeCard: (id: string) => request<Card>(`/cards/${id}/reanalyze`, { method: 'POST' }),
+  quota: () => request<Quota>('/quota'),
   deleteCard: (id: string) => request<undefined>(`/cards/${id}`, { method: 'DELETE' }),
   moveCard: (id: string, boardId: string) =>
     request<Card>(`/cards/${id}/move`, {
@@ -85,12 +87,17 @@ export const api = {
     }),
 }
 
+/** Worth retrying as is: the model or the network failed, not the request itself. */
+export function isRetryable(error: unknown): boolean {
+  return error instanceof ApiError ? error.status >= 500 : error instanceof TypeError
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 413) return '이미지가 너무 큽니다. 10MB 이하로 올려 주세요.'
     if (error.status === 415) return 'PNG, JPEG, WebP 이미지만 올릴 수 있습니다.'
     if (error.status === 429 && error.message === 'daily_quota')
-      return '오늘 분석할 수 있는 장수를 모두 썼습니다. 내일 다시 올려 주세요.'
+      return '오늘 분석할 수 있는 횟수를 모두 썼습니다. 초기화된 뒤 다시 시도해 주세요.'
     if (error.status === 429) return '업로드가 너무 잦습니다. 1분 뒤 다시 시도해 주세요.'
     if (error.status === 502) return '분석에 실패했습니다. 잠시 후 다시 시도해 주세요.'
     if (error.status === 403) return '이 계정은 사용이 허용되지 않았습니다.'
