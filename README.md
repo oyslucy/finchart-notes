@@ -38,6 +38,7 @@ Send the same screenshot to the bot with a `#board` tag, or tap one of your boar
 - **Boards:** five sector boards to start with (semiconductors, IT, batteries, bio, finance). Rename them, pin cards, and drag cards between boards (with undo).
 - **Search:** keyword search across all your cards from the home screen.
 - **PDF export:** pick a date range (one month by default) or check individual cards. Each page holds two cards with their notes.
+- **News translation:** upload a news PDF on the web or send it to the bot. The article comes back paragraph by paragraph, original and Korean side by side, with a three-point summary. The original PDF is kept alongside.
 - **Telegram bot:** link your account with a QR code. Send photos with `#tag` captions, or pick a board from inline buttons.
 - **Accounts:** username and password sign-up with argon2 hashes, httpOnly session cookies, same-origin checks, rate limits and a daily analysis quota.
 
@@ -46,21 +47,23 @@ Send the same screenshot to the bot with a `#board` tag, or tap one of your boar
 | | |
 | --- | --- |
 | Web | React 19, Vite, TypeScript, Tailwind CSS v4, TanStack Query, Radix, Motion |
-| API | FastAPI on Python 3.12 (uv), SQLite, Pillow, google-genai |
-| Model | `gemini-3.5-flash-lite` with structured output, falling back to `gemini-3.1-flash-lite` |
+| API | FastAPI on Python 3.12 (uv), SQLite, Pillow, pypdf, google-genai, anthropic |
+| Models | Charts: `gemini-3.5-flash-lite` with structured output, falling back to `gemini-3.1-flash-lite`. News: Claude Haiku 4.5 reading the PDF directly, with structured output |
 | Hosting | One Oracle Cloud Always Free VM, Docker Compose, Caddy (automatic HTTPS), DuckDNS |
 | CI/CD | GitHub Actions → GHCR → SSH deploy |
 | Backups | Daily SQLite and image snapshots to Oracle Object Storage, 7 kept |
 
-## Runs for free
+## Runs (almost) for free
 
-Everything above fits in free tiers: an Always Free Micro VM, the Gemini API free tier, a DuckDNS subdomain, Caddy's Let's Encrypt certificates, GHCR and GitHub Actions, and Object Storage within the Always Free allowance. Signups are open, with per-IP and per-user limits so the model quota stays within bounds.
+The chart side fits in free tiers: an Always Free Micro VM, the Gemini API free tier, a DuckDNS subdomain, Caddy's Let's Encrypt certificates, GHCR and GitHub Actions, and Object Storage within the Always Free allowance. Signups are open, with per-IP and per-user limits so the model quota stays within bounds.
+
+News translation is the one paid part: it is billed per token and stays off until `ANTHROPIC_API_KEY` is set. A daily translation limit per user and a page cap keep the bill bounded.
 
 ## Local development
 
 ```bash
 # API (http://localhost:8000)
-cp .env.example apps/api/.env   # add GEMINI_API_KEY
+cp .env.example apps/api/.env   # add GEMINI_API_KEY (and ANTHROPIC_API_KEY for news)
 cd apps/api && uv sync && uv run finchart-api
 
 # Web (http://localhost:5173, proxies /api to the API)

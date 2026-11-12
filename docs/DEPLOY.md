@@ -25,6 +25,7 @@
 ```bash
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-3.5-flash-lite
+ANTHROPIC_API_KEY=...             # 뉴스 PDF 번역 (유료). 비우면 뉴스 업로드가 꺼진다
 TELEGRAM_BOT_TOKEN=...            # BotFather
 TELEGRAM_BOT_USERNAME=FinchartNoteBot
 TELEGRAM_WEBHOOK_SECRET=...       # python3 -c "import secrets;print(secrets.token_urlsafe(32))"
