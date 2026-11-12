@@ -13,6 +13,13 @@ from uuid import UUID, uuid4
 from fastapi.concurrency import run_in_threadpool
 
 from finchart_api.domain.analysis import ChartAnalysis
+from finchart_api.domain.articles import (
+    Article,
+    ArticleData,
+    ArticleTranslation,
+    DuplicateArticleError,
+    FailureCode,
+)
 from finchart_api.domain.models import Board, Card, CardPatch, NewCard
 from finchart_api.domain.ports import DuplicateCardError, InvalidOrderError, UserData
 
@@ -41,6 +48,33 @@ _MIGRATIONS: list[str] = [
          update_id    integer primary key,
          received_at  text not null
        )""",
+    """create table articles (
+         id          text primary key,
+         owner_id    text not null references users(id) on delete cascade,
+         filename    text not null,
+         pdf_path    text not null,
+         pdf_sha256  text not null,
+         page_count  integer not null,
+         status      text not null check (status in ('pending', 'done', 'failed')),
+         error       text,
+         language    text,
+         title       text,
+         title_ko    text,
+         source      text,
+         published   text,
+         summary     text not null default '[]',
+         paragraphs  text not null default '[]',
+         model       text,
+         created_at  text not null,
+         unique (owner_id, pdf_sha256)
+       )""",
+    "create index articles_owner_created_idx on articles (owner_id, created_at desc)",
+    # One row per translation attempt; kept after deletion so the daily quota holds.
+    """create table translation_log (
+         owner_id    text not null references users(id) on delete cascade,
+         created_at  text not null
+       )""",
+    "create index translation_log_owner_idx on translation_log (owner_id, created_at)",
 ]
 SCHEMA_VERSION = 1 + len(_MIGRATIONS)
 # Pinned cards first (most recently pinned on top), then the user's order.
@@ -121,6 +155,11 @@ class Database:
             for statement in _MIGRATIONS[version - 1 :]:
                 conn.execute(statement)
             conn.execute(f"pragma user_version = {SCHEMA_VERSION}")
+            # Translations run in-process; any still pending died with the previous process.
+            conn.execute(
+                "update articles set status = 'failed', error = 'interrupted'"
+                " where status = 'pending'"
+            )
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -459,6 +498,137 @@ class SqliteCards:
         return result
 
 
+def _article(row: sqlite3.Row) -> Article:
+    data = dict(row)
+    data["summary"] = json.loads(data["summary"])
+    data["paragraphs"] = json.loads(data["paragraphs"])
+    return Article.model_validate(data)
+
+
+class SqliteArticles:
+    def __init__(self, db: Database, owner: UUID) -> None:
+        self._db, self._owner = db, str(owner)
+
+    async def _one(self, sql: str, params: tuple[Any, ...]) -> Article | None:
+        def op(conn: sqlite3.Connection) -> Article | None:
+            row = conn.execute(sql, params).fetchone()
+            return _article(row) if row else None
+
+        result: Article | None = await self._db.run(op)
+        return result
+
+    async def insert_pending(
+        self, filename: str, pdf_path: str, sha256: str, page_count: int
+    ) -> Article:
+        def op(conn: sqlite3.Connection) -> Article:
+            now = _now()
+            try:
+                row = conn.execute(
+                    """insert into articles (id, owner_id, filename, pdf_path, pdf_sha256,
+                         page_count, status, created_at)
+                       values (?, ?, ?, ?, ?, ?, 'pending', ?) returning *""",
+                    (str(uuid4()), self._owner, filename, pdf_path, sha256, page_count, now),
+                ).fetchone()
+            except sqlite3.IntegrityError as exc:
+                raise DuplicateArticleError(sha256) from exc
+            _log_translation(conn, self._owner, now)
+            return _article(row)
+
+        result: Article = await self._db.run(op)
+        return result
+
+    async def find_by_sha(self, sha256: str) -> Article | None:
+        return await self._one(
+            "select * from articles where owner_id = ? and pdf_sha256 = ?", (self._owner, sha256)
+        )
+
+    async def get(self, article_id: UUID) -> Article | None:
+        return await self._one(
+            "select * from articles where id = ? and owner_id = ?", (str(article_id), self._owner)
+        )
+
+    async def list(self, query: str, limit: int) -> list[Article]:
+        like = f"%{query}%"
+
+        def op(conn: sqlite3.Connection) -> list[Article]:
+            rows = conn.execute(
+                """select * from articles where owner_id = ?
+                     and (? = '' or title like ? or title_ko like ? or source like ?
+                          or filename like ? or summary like ? or paragraphs like ?)
+                   order by created_at desc limit ?""",
+                (self._owner, query, like, like, like, like, like, like, limit),
+            )
+            return [_article(r) for r in rows]
+
+        result: list[Article] = await self._db.run(op)
+        return result
+
+    async def restart(self, article_id: UUID) -> Article | None:
+        def op(conn: sqlite3.Connection) -> Article | None:
+            row = conn.execute(
+                """update articles set status = 'pending', error = null
+                   where id = ? and owner_id = ? and status = 'failed' returning *""",
+                (str(article_id), self._owner),
+            ).fetchone()
+            if row is None:
+                return None
+            _log_translation(conn, self._owner, _now())
+            return _article(row)
+
+        result: Article | None = await self._db.run(op)
+        return result
+
+    async def complete(
+        self, article_id: UUID, translation: ArticleTranslation, model: str
+    ) -> Article | None:
+        t = translation
+        return await self._one(
+            """update articles set status = 'done', error = null, language = ?, title = ?,
+                 title_ko = ?, source = ?, published = ?, summary = ?, paragraphs = ?, model = ?
+               where id = ? and owner_id = ? returning *""",
+            (
+                t.language,
+                t.title,
+                t.title_ko,
+                t.source,
+                t.published,
+                json.dumps(t.summary, ensure_ascii=False),
+                json.dumps([p.model_dump() for p in t.paragraphs], ensure_ascii=False),
+                model,
+                str(article_id),
+                self._owner,
+            ),
+        )
+
+    async def fail(self, article_id: UUID, code: FailureCode) -> Article | None:
+        return await self._one(
+            "update articles set status = 'failed', error = ? where id = ? and owner_id = ?"
+            " returning *",
+            (code, str(article_id), self._owner),
+        )
+
+    async def delete(self, article_id: UUID) -> Article | None:
+        return await self._one(
+            "delete from articles where id = ? and owner_id = ? returning *",
+            (str(article_id), self._owner),
+        )
+
+    async def translations_since(self, since: datetime) -> int:
+        def op(conn: sqlite3.Connection) -> int:
+            row = conn.execute(
+                "select count(*) from translation_log where owner_id = ? and created_at >= ?",
+                (self._owner, since.isoformat()),
+            ).fetchone()
+            return int(row[0])
+
+        result: int = await self._db.run(op)
+        return result
+
+
+def _log_translation(conn: sqlite3.Connection, owner: str, at: str) -> None:
+    conn.execute("insert into translation_log (owner_id, created_at) values (?, ?)", (owner, at))
+
+
 class FileStorage:
     """Images under DATA_DIR/images/<owner>/...; served by the API after an owner check."""
 
@@ -513,4 +683,12 @@ def sqlite_user_data(db: Database, owner: UUID) -> UserData:
         boards=SqliteBoards(db, owner),
         cards=SqliteCards(db, owner),
         storage=FileStorage(db.images_dir, owner),
+    )
+
+
+def sqlite_article_data(db: Database, owner: UUID) -> ArticleData:
+    return ArticleData(
+        owner_id=owner,
+        articles=SqliteArticles(db, owner),
+        files=FileStorage(db.images_dir, owner),
     )

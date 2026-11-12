@@ -2,8 +2,15 @@ import io
 
 import pytest
 from PIL import Image, ImageDraw
+from pypdf import PdfWriter
 
 from finchart_api.domain.analysis import ChartAnalysis, VisionResult
+from finchart_api.domain.articles import (
+    ArticleTranslation,
+    Paragraph,
+    TranslationResult,
+    TranslatorError,
+)
 
 
 def make_png(width: int = 1000, height: int = 800) -> bytes:
@@ -34,6 +41,48 @@ class FakeProvider:
     async def analyze(self, image_bytes: bytes) -> VisionResult:
         self.calls += 1
         return VisionResult(analysis=self.analysis, model="fake", raw=self.analysis.model_dump())
+
+
+def make_pdf(pages: int = 1, width: int = 600) -> bytes:
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=width, height=800)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def make_translation(title: str = "Fed holds rates") -> ArticleTranslation:
+    return ArticleTranslation(
+        language="en",
+        title=title,
+        title_ko="연준, 금리 동결",
+        source="Reuters",
+        published="2026-11-05",
+        summary=["연준이 금리를 동결했다.", "연내 인하 가능성을 열어 뒀다."],
+        paragraphs=[
+            Paragraph(
+                kind="paragraph",
+                original="The Fed held rates.",
+                translated="연준이 금리를 동결했다.",
+            ),
+            Paragraph(kind="heading", original="Outlook", translated="전망"),
+            Paragraph(kind="paragraph", original="  ", translated=""),
+        ],
+    )
+
+
+class FakeTranslator:
+    def __init__(self) -> None:
+        self.translation = make_translation()
+        self.calls = 0
+        self.error: TranslatorError | None = None
+
+    async def translate(self, pdf: bytes) -> TranslationResult:
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return TranslationResult(translation=self.translation, model="fake-translator")
 
 
 @pytest.fixture

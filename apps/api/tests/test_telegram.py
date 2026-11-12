@@ -12,7 +12,7 @@ from finchart_api.config import Settings
 from finchart_api.infra.telegram_api import Keyboard, TelegramFile
 from finchart_api.main import create_app
 
-from .conftest import FakeProvider, make_png
+from .conftest import FakeProvider, FakeTranslator, make_pdf, make_png
 
 SECRET = "webhook-secret"
 PASSWORD = "correct-horse-1"
@@ -62,10 +62,12 @@ class Harness:
         }
         self.telegram = FakeTelegram()
         self.provider = FakeProvider()
+        self.translator = FakeTranslator()
         self.app = create_app(
             Settings(_env_file=None, data_dir=data_dir, **options),
             provider=self.provider,
             telegram_client=self.telegram,
+            translator=self.translator,
         )
         self.bot_client = TestClient(self.app)
         self.next_update = 1
@@ -333,8 +335,8 @@ def test_board_command_changes_default(h: Harness) -> None:
 
 def test_non_image_document_is_rejected(h: Harness) -> None:
     h.linked_user()
-    h.send(document={"file_id": "x", "file_size": 10, "mime_type": "application/pdf"})
-    assert "이미지 파일만" in h.telegram.sent[-1][1]
+    h.send(document={"file_id": "x", "file_size": 10, "mime_type": "application/zip"})
+    assert "PNG, JPEG, WebP" in h.telegram.sent[-1][1]
     assert h.provider.calls == 0
 
 
@@ -465,3 +467,41 @@ def test_callback_update_is_idempotent(h: Harness) -> None:
     h.bot_client.post("/api/telegram/webhook", json=body, headers=headers)
 
     assert len(h.telegram.answers) == 1
+
+
+# --- news PDFs ---
+
+
+def _pdf_document(h: Harness, data: bytes, file_id: str = "pdf1"):  # type: ignore[no-untyped-def]
+    h.telegram.files[file_id] = data
+    doc = {
+        "file_id": file_id,
+        "file_size": len(data),
+        "mime_type": "application/pdf",
+        "file_name": "fed.pdf",
+    }
+    return h.send(document=doc)
+
+
+def test_pdf_is_translated_and_linked(h: Harness) -> None:
+    web = h.linked_user()
+
+    _pdf_document(h, make_pdf())
+
+    assert h.telegram.sent[-1][1].startswith("기사를 번역하고 있습니다")
+    reply = h.telegram.edits[-1][2]
+    assert "연준, 금리 동결" in reply and "• 연준이 금리를 동결했다." in reply
+    [article] = web.get("/api/articles").json()
+    assert article["filename"] == "fed.pdf" and article["status"] == "done"
+    assert reply.endswith(f"/news/{article['id']}")
+    assert h.provider.calls == 0
+
+
+def test_pdf_with_too_many_pages_is_refused(tmp_path: Path) -> None:
+    h = Harness(tmp_path, max_pdf_pages=1)
+    h.linked_user()
+
+    _pdf_document(h, make_pdf(2))
+
+    assert "2쪽짜리" in h.telegram.edits[-1][2]
+    assert h.translator.calls == 0

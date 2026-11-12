@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from finchart_api.config import Settings, get_settings
-from finchart_api.http import auth, boards, cards, health, images, telegram
+from finchart_api.domain.articles import Translator
+from finchart_api.http import articles, auth, boards, cards, health, images, telegram
 from finchart_api.http.deps import Services
 from finchart_api.http.origin import SameOriginMiddleware
 from finchart_api.http.ratelimit import RateLimiter
@@ -15,7 +16,7 @@ from finchart_api.infra.sqlite import Database
 from finchart_api.infra.telegram_api import HttpTelegramClient, TelegramClient
 from finchart_api.infra.telegram_store import TelegramStore
 from finchart_api.llm.base import VisionProvider
-from finchart_api.llm.factory import build_vision_provider
+from finchart_api.llm.factory import build_translator, build_vision_provider
 from finchart_api.telegram.bot import TelegramBot
 from finchart_api.telegram.polling import run_polling
 
@@ -25,11 +26,13 @@ def create_app(
     *,
     provider: VisionProvider | None = None,
     telegram_client: TelegramClient | None = None,
+    translator: Translator | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     db = Database(settings.data_dir)
     db.migrate()
     provider = provider or build_vision_provider(settings)
+    translator = translator or build_translator(settings)
     upload_limiter = RateLimiter(settings.rate_limit_per_minute)
     telegram_store = TelegramStore(db)
 
@@ -44,9 +47,13 @@ def create_app(
             store=telegram_store,
             client=telegram_client,
             provider=provider,
+            translator=translator,
             upload_limiter=upload_limiter,  # shared with the web, so limits are per user
             max_upload_bytes=settings.max_upload_bytes,
             daily_quota=settings.daily_analyses_per_user,
+            daily_translations=settings.daily_translations_per_user,
+            max_pdf_bytes=settings.max_pdf_bytes,
+            max_pdf_pages=settings.max_pdf_pages,
             public_base_url=settings.public_base_url.rstrip("/"),
         )
 
@@ -80,9 +87,10 @@ def create_app(
         signup_limiter=RateLimiter(settings.signups_per_ip_per_hour, window_s=3600),
         telegram_store=telegram_store,
         telegram=bot,
+        translator=translator,
     )
     routers = (health.router, auth.router, boards.router, cards.router, images.router)
-    for router in (*routers, telegram.router):
+    for router in (*routers, articles.router, telegram.router):
         app.include_router(router, prefix="/api")
 
     # Mounted last so /api routes take precedence over the SPA catch-all.

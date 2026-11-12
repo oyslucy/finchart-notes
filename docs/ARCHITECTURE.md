@@ -19,11 +19,12 @@ Oracle Cloud Always Free VM (VM.Standard.E2.1.Micro, RAM 1 GB)
        volume app_data:/data ── finchart.db (SQLite), images/<user_id>/*.webp
                     │
                     ├──▶ Gemini API (VLM, 무료 티어)
+                    ├──▶ Claude API (뉴스 PDF 번역, 유료. 키가 없으면 꺼짐)
                     ├──◀ Telegram Bot API (웹훅 수신, 메시지 전송, 파일 다운로드)
                     └──▶ Oracle Object Storage  finchart-backups 버킷 (7일 보관)
 ```
 
-- 외부 서비스는 Gemini와 Oracle(VM, Object Storage) 두 곳뿐이다. 프론트, API, DB, 이미지, 로그인이 모두 VM 하나 안에 있다.
+- 외부 서비스는 Gemini, Claude API(뉴스 번역, 선택), Oracle(VM, Object Storage)이다. 프론트, API, DB, 이미지, 로그인이 모두 VM 하나 안에 있다.
 - 프론트와 API는 같은 도메인을 쓴다. CORS가 없고, 세션 쿠키는 `SameSite=Lax`이며, 상태를 바꾸는 요청은 Origin 검사를 거친다.
 - PDF는 브라우저에서 인쇄용 CSS로 만든다(`PrintBoard`). A4 한 장마다 보드 제목, 날짜, 쪽 번호와 카드 2장(차트 왼쪽, 해설 오른쪽)을 넣는다. 1 GB VM에서는 서버 렌더러를 쓰지 않는다.
 
@@ -39,6 +40,16 @@ Oracle Cloud Always Free VM (VM.Standard.E2.1.Micro, RAM 1 GB)
 6. **저장**: `/data/images/{owner_id}/{sha256}.webp`와 `_thumb.webp`에 저장하고, `cards`에 행을 추가한다.
 7. **응답**: 카드 JSON을 반환한다. 이미지 URL은 `/api/images/...`이고, 소유자만 받을 수 있다.
 
+## 요청 흐름: 뉴스 PDF 번역
+
+`POST /api/articles` (multipart `pdf`)
+
+1. **검사**: 20 MB 이하, `%PDF-`로 시작하고 암호가 없어야 하며, 30쪽 이하여야 한다. 쪽수는 `pypdf`로 페이지 트리만 읽어 센다(렌더링하지 않는다).
+2. **제한**: 사용자별 분당 업로드 수(카드와 공유)와 하루 번역 횟수(`translation_log`, 기본 10회)를 확인한다. 번역은 토큰 단위로 과금되므로 차트 분석과 별도로 센다. 실패한 시도와 다시 시도도 1회로 센다.
+3. **저장**: PDF의 SHA-256이 이미 있으면 기존 기사를 `duplicate: true`로 돌려준다. 없으면 `/data/images/{owner_id}/articles/{sha256}.pdf`에 저장하고, `articles`에 `pending` 행을 만든 뒤 `202`를 반환한다.
+4. **번역(백그라운드)**: `Translator.translate(pdf)`가 PDF를 Claude API에 문서 블록으로 보낸다. 응답은 JSON 스키마(structured output)로 받는다: 언어, 원제, 한국어 제목, 매체, 발행일, 요약 3줄, 문단 목록(`kind`, `original`, `translated`). 출력이 길어 스트리밍으로 받는다. SDK가 429, 과부하, 5xx를 재시도한다.
+5. **결과**: 성공하면 `done`, 실패하면 `failed`와 사유(`too_long`, `unreadable`, `failed`)를 기록한다. 서버가 번역 도중 재시작되면 시작 시 `pending`을 `failed`(`interrupted`)로 바꾼다. 웹은 `pending`인 기사가 있는 동안 목록을 폴링한다.
+
 ## 코드 구조
 
 ```
@@ -49,9 +60,11 @@ apps/api/src/finchart_api/
     analysis.py        ChartAnalysis 스키마
     pipeline.py        스크린샷 분석 (해시 → VLM → 크롭)
     cards.py           카드 생성/삭제, 보드 삭제 유스케이스
+    articles.py        뉴스 PDF 제출/번역/재시도 유스케이스, 번역 스키마, Translator 프로토콜
     ports.py           저장소/스토리지 프로토콜
   imaging.py           해시, bbox 변환, 크롭 검증, 썸네일, EXIF 제거
-  llm/                 VisionProvider (gemini, 로컬 전용 claude_cli), 프롬프트
+  pdf.py               PDF 쪽수 확인 (pypdf, 렌더링 없음)
+  llm/                 VisionProvider (gemini, 로컬 전용 claude_cli), 프롬프트, claude_api.py (번역)
   infra/
     sqlite.py          스키마, 사용자별로 범위가 정해진 보드/카드 저장소, 파일 스토리지
     accounts.py        계정(argon2 비밀번호 해시)과 세션
@@ -112,6 +125,11 @@ telegram_updates     (update_id pk, received_at)   -- 웹훅 재전송 멱등성
 | PUT | `/api/boards/{id}/order` | 카드 순서 변경 (`card_ids` 배열) |
 | PATCH / DELETE | `/api/cards/{id}` | 텍스트, 메모, 고정(`pinned`) 수정 / 삭제 |
 | POST | `/api/cards/{id}/reanalyze` | 저장된 크롭 이미지로 해설만 다시 받는다. 메모와 이미지는 그대로 두고, 하루 분석 횟수에 포함된다 |
+| POST / GET | `/api/articles` | 뉴스 PDF 업로드 → `202` 후 백그라운드 번역 / 기사 목록 (`q`로 검색, 본문 제외) |
+| GET / DELETE | `/api/articles/{id}` | 기사 (문단별 원문과 번역) / 삭제 (PDF 포함) |
+| POST | `/api/articles/{id}/retry` | 실패한 번역을 다시 시도 (하루 번역 횟수에 포함) |
+| GET | `/api/articles/{id}/pdf` | 원본 PDF (소유자만, inline) |
+| GET | `/api/articles/quota` | 오늘 번역 횟수 (`/api/quota`와 같은 형태) |
 | GET | `/api/quota` | 오늘 분석 횟수 (`limit`, `used`, `remaining`, `resets_at`, 매일 00:00 UTC 초기화) |
 | GET | `/api/images/{path}` | 카드 이미지 (소유자만) |
 | POST | `/api/telegram/link-token` | 1회용 연결 링크 `https://t.me/<봇>?start=<토큰>` 발급 (10분) |
@@ -136,6 +154,11 @@ telegram_updates     (update_id pk, received_at)   -- 웹훅 재전송 멱등성
 | `SIGNUPS_PER_IP_PER_HOUR` | | `5` | IP별 시간당 가입 수 |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | | `10` | IP와 아이디별 분당 로그인 시도 수 |
 | `MAX_UPLOAD_BYTES` | | `10485760` | 10 MB |
+| `ANTHROPIC_API_KEY` | | | 뉴스 번역용. 비어 있으면 뉴스 업로드가 503을 반환한다 (유료, 토큰 단위 과금) |
+| `TRANSLATE_MODEL` | | `claude-haiku-4-5-20251001` | 번역 모델 |
+| `DAILY_TRANSLATIONS_PER_USER` | | `10` | 사용자별 하루 번역 횟수 (UTC 자정 기준) |
+| `MAX_PDF_BYTES` | | `20971520` | 20 MB (텔레그램 다운로드 한도와 같다) |
+| `MAX_PDF_PAGES` | | `30` | 쪽수 상한 |
 
 | `PUBLIC_BASE_URL` | | `https://finchart-notes.duckdns.org` | 봇이 보내는 카드 링크의 주소 |
 | `TELEGRAM_BOT_TOKEN` | | | BotFather 토큰. 비어 있으면 봇 기능이 꺼진다 |

@@ -1,4 +1,5 @@
 from finchart_api.config import Settings
+from finchart_api.domain.articles import Translator
 from finchart_api.llm.base import VisionProvider
 
 
@@ -17,4 +18,14 @@ def build_vision_provider(settings: Settings) -> VisionProvider:
         api_key=settings.gemini_api_key,
         model=settings.gemini_model,
         fallback_model=settings.gemini_fallback_model,
+    )
+
+
+def build_translator(settings: Settings) -> Translator | None:
+    if not settings.translation_enabled:
+        return None
+    from finchart_api.llm.claude_api import ClaudeTranslator
+
+    return ClaudeTranslator(
+        api_key=settings.anthropic_api_key.get_secret_value(), model=settings.translate_model
     )

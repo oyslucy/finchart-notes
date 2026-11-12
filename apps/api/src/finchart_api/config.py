@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"
     gemini_fallback_model: str | None = "gemini-3.1-flash-lite"
+    # News PDF translation (paid API); the feature is off while the key is empty.
+    anthropic_api_key: SecretStr = SecretStr("")
+    translate_model: str = "claude-haiku-4-5-20251001"
+    # Translations are billed per token, so they get their own, smaller daily share.
+    daily_translations_per_user: int = 10
+    max_pdf_bytes: int = 20 * 1024 * 1024
+    max_pdf_pages: int = 30
     data_dir: Path = Path("data")
     backup_bucket: str = "finchart-backups"
     # Optional allow-list; when empty anyone may sign up.
@@ -54,6 +61,10 @@ class Settings(BaseSettings):
             and self.telegram_bot_token.get_secret_value()
             and self.telegram_bot_username
         )
+
+    @property
+    def translation_enabled(self) -> bool:
+        return bool(self.anthropic_api_key.get_secret_value())
 
     @property
     def secure_cookies(self) -> bool:

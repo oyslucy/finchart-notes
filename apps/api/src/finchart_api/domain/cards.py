@@ -32,12 +32,12 @@ class DailyUsage:
         return max(0, self.limit - self.used)
 
 
-def _start_of_day() -> datetime:
+def start_of_day() -> datetime:
     return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 async def daily_usage(data: UserData, daily_quota: int) -> DailyUsage:
-    start = _start_of_day()
+    start = start_of_day()
     used = await data.cards.analyses_since(start)
     return DailyUsage(limit=daily_quota, used=used, resets_at=start + timedelta(days=1))
 

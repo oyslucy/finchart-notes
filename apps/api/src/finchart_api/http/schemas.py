@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from finchart_api.domain.articles import Article, ArticleStatus, FailureCode, Paragraph
 from finchart_api.domain.models import Card
 
 
@@ -66,3 +67,39 @@ class QuotaOut(BaseModel):
     used: int
     remaining: int
     resets_at: datetime
+
+
+class ArticleSummaryOut(BaseModel):
+    id: UUID
+    filename: str
+    page_count: int
+    status: ArticleStatus
+    error: FailureCode | None
+    language: str | None
+    title: str | None
+    title_ko: str | None
+    source: str | None
+    published: str | None
+    summary: list[str]
+    created_at: datetime
+
+    @classmethod
+    def from_article(cls, article: Article) -> "ArticleSummaryOut":
+        return cls.model_validate(article.model_dump(include=set(cls.model_fields)))
+
+
+class ArticleOut(ArticleSummaryOut):
+    paragraphs: list[Paragraph]
+    pdf_url: str
+
+    @classmethod
+    def from_article(cls, article: Article) -> "ArticleOut":
+        fields = set(cls.model_fields) - {"pdf_url"}
+        return cls.model_validate(
+            {**article.model_dump(include=fields), "pdf_url": f"/api/articles/{article.id}/pdf"}
+        )
+
+
+class ArticleSubmitOut(BaseModel):
+    article: ArticleOut
+    duplicate: bool

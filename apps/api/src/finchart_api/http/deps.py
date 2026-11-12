@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import Depends, HTTPException, Request, status
 
 from finchart_api.config import Settings
+from finchart_api.domain.articles import Translator
 from finchart_api.domain.ports import UserData
 from finchart_api.http.ratelimit import RateLimiter
 from finchart_api.infra.accounts import Account, Accounts
@@ -29,6 +30,8 @@ class Services:
     telegram_store: TelegramStore
     # None when the bot token/username are not configured.
     telegram: "TelegramBot | None" = field(default=None)
+    # None when ANTHROPIC_API_KEY is empty: news translation is turned off.
+    translator: Translator | None = field(default=None)
 
 
 def get_services(request: Request) -> Services:

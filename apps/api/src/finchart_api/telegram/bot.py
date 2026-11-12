@@ -7,17 +7,21 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from finchart_api.domain.articles import Article, Translator, submit_article, translate_article
 from finchart_api.domain.cards import BoardNotFoundError, DailyQuotaExceededError, create_card
 from finchart_api.domain.models import Board
 from finchart_api.domain.ports import UserData
 from finchart_api.domain.uploads import (
     ALLOWED_MIME,
+    TooManyPagesError,
     UnsupportedImageError,
+    UnsupportedPdfError,
     UploadTooLargeError,
     validate_image_upload,
+    validate_pdf_upload,
 )
 from finchart_api.http.ratelimit import RateLimiter
-from finchart_api.infra.sqlite import Database, sqlite_user_data
+from finchart_api.infra.sqlite import Database, sqlite_article_data, sqlite_user_data
 from finchart_api.infra.telegram_api import Keyboard, TelegramApiError, TelegramClient
 from finchart_api.infra.telegram_store import LinkResult, TelegramLink, TelegramStore
 from finchart_api.llm.base import VisionProvider, VisionProviderError
@@ -29,6 +33,13 @@ MAX_BOARD_BUTTONS = 8
 BOARD_LINE = "보드: "
 MOVE_HINT = "다른 보드에 저장하려면 아래에서 고르세요."
 FILE_TIP = "화질 유지를 위해 사진 대신 파일로 보내세요."
+PDF_MIME = frozenset({"application/pdf", "application/x-pdf"})
+TRANSLATE_FAILED = {
+    "too_long": "기사가 너무 길어 번역하지 못했습니다. 페이지를 나눠 보내 주세요.",
+    "unreadable": "PDF를 읽지 못했습니다. 텍스트가 있는 PDF인지 확인해 주세요.",
+    "failed": "번역에 실패했습니다. 잠시 후 웹의 뉴스 탭에서 다시 시도해 주세요.",
+    "interrupted": "번역이 중단되었습니다. 웹의 뉴스 탭에서 다시 시도해 주세요.",
+}
 _HASHTAG = re.compile(r"#([^\s#]+)")
 
 LINK_MESSAGES = {
@@ -40,6 +51,13 @@ LINK_MESSAGES = {
         "그 계정의 웹 설정에서 먼저 연결을 해제해 주세요."
     ),
 }
+
+
+@dataclass(frozen=True)
+class IncomingPdf:
+    file_id: str
+    file_size: int | None
+    filename: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +77,11 @@ class TelegramBot:
     max_upload_bytes: int
     daily_quota: int
     public_base_url: str
+    # News PDFs; translator is None while the API key is not configured.
+    translator: Translator | None = None
+    daily_translations: int = 10
+    max_pdf_bytes: int = 20 * 1024 * 1024
+    max_pdf_pages: int = 30
 
     # --- entry point -----------------------------------------------------------------
 
@@ -104,6 +127,8 @@ class TelegramBot:
             )
         elif command == "/board":
             await self._board_command(link, argument, chat_id)
+        elif pdf := _incoming_pdf(message):
+            await self._translate(link, pdf, chat_id)
         else:
             image = _incoming_image(message)
             if isinstance(image, IncomingImage):
@@ -142,6 +167,7 @@ class TelegramBot:
             f"{link.username}님 계정에 연결되어 있습니다.\n\n"
             f"차트 스크린샷을 보내면 분석해서 카드로 저장합니다. {FILE_TIP}\n"
             "• 캡션에 #보드이름 → 그 보드에 저장\n"
+            "• 뉴스 PDF → 원문과 한국어 번역으로 정리 (웹의 뉴스 탭)\n"
             "• /board → 보드 목록, /board 보드이름 → 기본 보드 변경\n"
             "• /unlink → 연결 해제"
         )
@@ -227,6 +253,69 @@ class TelegramBot:
             lines.append(f"\n{MOVE_HINT}")
         return "\n".join(lines), keyboard or None
 
+    # --- news PDFs ----------------------------------------------------------------------
+
+    async def _translate(self, link: TelegramLink, pdf: IncomingPdf, chat_id: int) -> None:
+        if self.translator is None:
+            await self.client.send_message(chat_id, "뉴스 번역 기능이 아직 꺼져 있습니다.")
+            return
+        if not self.upload_limiter.allow(str(link.user_id)):
+            await self.client.send_message(
+                chat_id, "업로드가 너무 잦습니다. 1분 뒤 다시 보내 주세요."
+            )
+            return
+        if pdf.file_size and pdf.file_size > self.max_pdf_bytes:
+            await self.client.send_message(chat_id, self._pdf_too_large())
+            return
+        pending = await self.client.send_message(chat_id, "기사를 번역하고 있습니다… (1~2분)")
+        reply = await self._run_translation(link, pdf, self.translator)
+        await self.client.edit_message_text(chat_id, pending, reply)
+
+    async def _run_translation(
+        self, link: TelegramLink, pdf: IncomingPdf, translator: Translator
+    ) -> str:
+        data = sqlite_article_data(self.db, link.user_id)
+        try:
+            file = await self.client.get_file(pdf.file_id)
+            content = await self.client.download_file(file.file_path, self.max_pdf_bytes)
+            pages = validate_pdf_upload(content, self.max_pdf_bytes, self.max_pdf_pages)
+            submission = await submit_article(
+                data, content, pdf.filename, pages, self.daily_translations
+            )
+        except UploadTooLargeError:
+            return self._pdf_too_large()
+        except UnsupportedPdfError:
+            return "PDF를 열 수 없습니다. 암호가 걸려 있지 않은 PDF로 보내 주세요."
+        except TooManyPagesError as exc:
+            return f"{exc.pages}쪽짜리 PDF입니다. {exc.limit}쪽 이하로 보내 주세요."
+        except DailyQuotaExceededError:
+            return "오늘 번역할 수 있는 횟수를 모두 썼습니다. 내일 다시 보내 주세요."
+        except TelegramApiError as exc:
+            log.warning("telegram pdf download failed: %s", exc)
+            return "파일을 받지 못했습니다. 잠시 후 다시 보내 주세요."
+
+        article: Article | None = submission.article
+        if not submission.duplicate:
+            article = await translate_article(data, translator, submission.article.id)
+        if article is None:
+            return "기사를 찾을 수 없습니다."
+        if article.status == "failed":
+            return TRANSLATE_FAILED[article.error or "failed"]
+        if article.status == "pending":
+            return f"이미 번역 중인 기사입니다.\n{self.article_url(article.id)}"
+        lines = [article.title_ko or article.title or article.filename]
+        lines += [f"• {s}" for s in article.summary]
+        if submission.duplicate:
+            lines.insert(0, "이미 번역한 기사라 기존 결과를 불러왔습니다.\n")
+        lines += ["", f"원문과 번역 보기: {self.article_url(article.id)}"]
+        return "\n".join(lines)
+
+    def article_url(self, article_id: UUID) -> str:
+        return f"{self.public_base_url}/news/{article_id}"
+
+    def _pdf_too_large(self) -> str:
+        return f"PDF가 너무 큽니다. {self.max_pdf_bytes // (1024 * 1024)}MB 이하로 보내 주세요."
+
     # --- inline buttons --------------------------------------------------------------
 
     async def _callback(self, callback: dict[str, Any]) -> None:
@@ -296,6 +385,15 @@ def _command(text: str) -> tuple[str, str]:
     return head.split("@", 1)[0].lower(), rest.strip()
 
 
+def _incoming_pdf(message: dict[str, Any]) -> IncomingPdf | None:
+    document = message.get("document")
+    if not isinstance(document, dict) or document.get("mime_type") not in PDF_MIME:
+        return None
+    return IncomingPdf(
+        document["file_id"], document.get("file_size"), str(document.get("file_name") or "")
+    )
+
+
 def _incoming_image(message: dict[str, Any]) -> IncomingImage | str | None:
     """The largest photo size, or an image document. A string is an error to show."""
     photos = message.get("photo")
@@ -305,7 +403,7 @@ def _incoming_image(message: dict[str, Any]) -> IncomingImage | str | None:
     document = message.get("document")
     if isinstance(document, dict):
         if document.get("mime_type") not in ALLOWED_MIME:
-            return "PNG, JPEG, WebP 이미지 파일만 분석할 수 있습니다."
+            return "차트는 PNG, JPEG, WebP 이미지로, 뉴스는 PDF로 보내 주세요."
         return IncomingImage(document["file_id"], document.get("file_size"), from_photo=False)
     return None
 
