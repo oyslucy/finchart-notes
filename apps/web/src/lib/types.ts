@@ -38,6 +38,40 @@ export interface Quota {
   resets_at: string
 }
 
+export type ArticleStatus = 'pending' | 'done' | 'failed'
+export type ArticleFailure = 'too_long' | 'unreadable' | 'failed' | 'interrupted'
+
+export interface ArticleSummary {
+  id: string
+  filename: string
+  page_count: number
+  status: ArticleStatus
+  error: ArticleFailure | null
+  language: string | null
+  title: string | null
+  title_ko: string | null
+  source: string | null
+  published: string | null
+  summary: string[]
+  created_at: string
+}
+
+export interface Paragraph {
+  kind: 'heading' | 'paragraph'
+  original: string
+  translated: string
+}
+
+export interface Article extends ArticleSummary {
+  paragraphs: Paragraph[]
+  pdf_url: string
+}
+
+export interface ArticleSubmitResult {
+  article: Article
+  duplicate: boolean
+}
+
 export type CardPatch = Partial<
   Pick<
     Card,

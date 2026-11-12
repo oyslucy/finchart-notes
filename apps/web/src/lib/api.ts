@@ -1,4 +1,14 @@
-import type { Board, Card, CardCreateResult, CardPatch, Quota, RecentCard } from './types.ts'
+import type {
+  Article,
+  ArticleSubmitResult,
+  ArticleSummary,
+  Board,
+  Card,
+  CardCreateResult,
+  CardPatch,
+  Quota,
+  RecentCard,
+} from './types.ts'
 
 export class ApiError extends Error {
   readonly status: number
@@ -80,6 +90,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ board_id: boardId }),
     }),
+  listArticles: (q = '') =>
+    request<ArticleSummary[]>(q ? `/articles?q=${encodeURIComponent(q)}` : '/articles'),
+  getArticle: (id: string) => request<Article>(`/articles/${id}`),
+  uploadArticle: (file: File) => {
+    const form = new FormData()
+    form.append('pdf', file)
+    return request<ArticleSubmitResult>('/articles', { method: 'POST', body: form })
+  },
+  retryArticle: (id: string) => request<Article>(`/articles/${id}/retry`, { method: 'POST' }),
+  deleteArticle: (id: string) => request<undefined>(`/articles/${id}`, { method: 'DELETE' }),
+  translationQuota: () => request<Quota>('/articles/quota'),
   reorder: (boardId: string, cardIds: string[]) =>
     request<undefined>(`/boards/${boardId}/order`, {
       method: 'PUT',
@@ -94,10 +115,19 @@ export function isRetryable(error: unknown): boolean {
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.status === 413 && error.message === 'pdf too large')
+      return 'PDF가 너무 큽니다. 20MB 이하로 올려 주세요.'
     if (error.status === 413) return '이미지가 너무 큽니다. 10MB 이하로 올려 주세요.'
+    if (error.status === 415 && error.message === 'unreadable_pdf')
+      return 'PDF를 열 수 없습니다. 암호가 걸려 있지 않은 PDF로 올려 주세요.'
+    if (error.status === 415 && error.message === 'only pdf') return 'PDF 파일만 올릴 수 있습니다.'
     if (error.status === 415) return 'PNG, JPEG, WebP 이미지만 올릴 수 있습니다.'
+    if (error.status === 422 && error.message === 'too_many_pages')
+      return '쪽수가 너무 많습니다. 30쪽 이하 PDF로 올려 주세요.'
+    if (error.status === 503 && error.message === 'translation_disabled')
+      return '뉴스 번역 기능이 아직 설정되지 않았습니다.'
     if (error.status === 429 && error.message === 'daily_quota')
-      return '오늘 분석할 수 있는 횟수를 모두 썼습니다. 초기화된 뒤 다시 시도해 주세요.'
+      return '오늘 쓸 수 있는 횟수를 모두 썼습니다. 초기화된 뒤 다시 시도해 주세요.'
     if (error.status === 429) return '업로드가 너무 잦습니다. 1분 뒤 다시 시도해 주세요.'
     if (error.status === 502) return '분석에 실패했습니다. 잠시 후 다시 시도해 주세요.'
     if (error.status === 403) return '이 계정은 사용이 허용되지 않았습니다.'

@@ -1,14 +1,14 @@
-import { ImageUp } from 'lucide-react'
+import { ImageUp, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 
 import { Icon } from '../../components/ui/Icon.tsx'
 import { Kbd } from '../../components/ui/Kbd.tsx'
 import { cx } from '../../design/cx.ts'
 
-const ACCEPT = ['image/png', 'image/jpeg', 'image/webp']
+const IMAGES = ['image/png', 'image/jpeg', 'image/webp']
 
-function imagesFrom(list: FileList | null | undefined): File[] {
-  return Array.from(list ?? []).filter((f) => ACCEPT.includes(f.type))
+function filesFrom(list: FileList | null | undefined, accept: string[]): File[] {
+  return Array.from(list ?? []).filter((f) => accept.includes(f.type))
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -26,16 +26,30 @@ interface UploadZoneProps {
   hint?: string
   /** Shown beside the file button, e.g. the analyses left today. */
   aside?: ReactNode
+  /** MIME types to take; screenshots by default. */
+  accept?: string[]
+  /** What to drop, with its object particle: "스크린샷을", "뉴스 PDF를". */
+  noun?: string
+  icon?: LucideIcon
 }
 
-export function UploadZone({ onFiles, busy, variant = 'framed', hint, aside }: UploadZoneProps) {
+export function UploadZone({
+  onFiles,
+  busy,
+  variant = 'framed',
+  hint,
+  aside,
+  accept = IMAGES,
+  noun = '스크린샷을',
+  icon = ImageUp,
+}: UploadZoneProps) {
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       if (isTyping(event.target)) return
-      const files = imagesFrom(event.clipboardData?.files)
+      const files = filesFrom(event.clipboardData?.files, accept)
       if (files.length) {
         event.preventDefault()
         onFiles(files)
@@ -45,12 +59,12 @@ export function UploadZone({ onFiles, busy, variant = 'framed', hint, aside }: U
     return () => {
       window.removeEventListener('paste', onPaste)
     }
-  }, [onFiles])
+  }, [onFiles, accept])
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault()
     setDragging(false)
-    const files = imagesFrom(event.dataTransfer.files)
+    const files = filesFrom(event.dataTransfer.files, accept)
     if (files.length) onFiles(files)
   }
 
@@ -79,13 +93,13 @@ export function UploadZone({ onFiles, busy, variant = 'framed', hint, aside }: U
     >
       <div className="flex items-center gap-3 text-[14px] text-text-muted">
         <span className="text-text-faint">
-          <Icon icon={ImageUp} size={20} />
+          <Icon icon={icon} size={20} />
         </span>
         <span className="flex flex-col">
           <span className="hidden sm:inline">
-            스크린샷을 끌어다 놓거나 <Kbd>⌘</Kbd> <Kbd>V</Kbd> 로 붙여넣기
+            {noun} 끌어다 놓거나 <Kbd>⌘</Kbd> <Kbd>V</Kbd> 로 붙여넣기
           </span>
-          <span className="sm:hidden">차트 스크린샷을 골라 올려 주세요</span>
+          <span className="sm:hidden">{noun} 골라 올려 주세요</span>
           {hint && <span className="text-[12px] text-text-faint">{hint}</span>}
         </span>
       </div>
@@ -103,11 +117,11 @@ export function UploadZone({ onFiles, busy, variant = 'framed', hint, aside }: U
       <input
         ref={input}
         type="file"
-        accept={ACCEPT.join(',')}
+        accept={accept.join(',')}
         multiple
         hidden
         onChange={(e) => {
-          const files = imagesFrom(e.target.files)
+          const files = filesFrom(e.target.files, accept)
           e.target.value = ''
           if (files.length) onFiles(files)
         }}

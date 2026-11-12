@@ -1,4 +1,4 @@
-import { House, LayoutGrid, LogOut, Menu, Plus, Settings, X } from 'lucide-react'
+import { House, LayoutGrid, LogOut, Menu, Newspaper, Plus, Settings, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useState, type SyntheticEvent } from 'react'
@@ -121,6 +121,9 @@ function SidebarContent({ username }: { username: string }) {
         <div className="pt-3">
           <SidebarItem href="/" icon={House} active={pathname === '/'} asLink>
             홈
+          </SidebarItem>
+          <SidebarItem href="/news" icon={Newspaper} active={pathname.startsWith('/news')} asLink>
+            뉴스
           </SidebarItem>
           <SidebarItem href="/settings" icon={Settings} active={pathname === '/settings'} asLink>
             설정
