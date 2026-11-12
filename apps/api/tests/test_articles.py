@@ -182,6 +182,21 @@ def test_list_is_newest_first_and_searchable(news: News) -> None:
     assert [a["title_ko"] for a in found] == ["유가 급등"]
 
 
+def test_pinned_articles_come_first(news: News) -> None:
+    alice, bob = news.user("alice"), news.user("bob")
+    older = upload(alice, make_pdf(1), name="older.pdf").json()["article"]["id"]
+    upload(alice, make_pdf(2), name="newer.pdf")
+
+    r = alice.patch(f"/api/articles/{older}", json={"pinned": True})
+
+    assert r.status_code == 200 and r.json()["pinned"] is True
+    assert [a["filename"] for a in alice.get("/api/articles").json()] == ["older.pdf", "newer.pdf"]
+    assert bob.patch(f"/api/articles/{older}", json={"pinned": True}).status_code == 404
+
+    alice.patch(f"/api/articles/{older}", json={"pinned": False})
+    assert [a["filename"] for a in alice.get("/api/articles").json()] == ["newer.pdf", "older.pdf"]
+
+
 async def test_restart_marks_unfinished_translations_interrupted(tmp_path: Path) -> None:
     news = News(tmp_path)
     alice = news.user("alice")

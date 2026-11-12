@@ -1,16 +1,19 @@
-import { FileText, FileUp, LoaderCircle, RotateCw, Search, X } from 'lucide-react'
+import { FileText, FileUp, LoaderCircle, Pin, PinOff, RotateCw, Search, X } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router'
 
 import { Icon } from '../components/ui/Icon.tsx'
+import { IconButton } from '../components/ui/IconButton.tsx'
 import { Skeleton } from '../components/ui/Skeleton.tsx'
 import { useToast } from '../components/ui/toast-context.ts'
+import { cx } from '../design/cx.ts'
 import { TranslationQuotaNote } from '../features/cards/QuotaNote.tsx'
 import { UploadZone } from '../features/cards/UploadZone.tsx'
 import {
   FAILURE_MESSAGE,
   useArticles,
   useRetryArticle,
+  useToggleArticlePin,
   useUploadArticle,
 } from '../features/news/queries.ts'
 import { errorMessage, isRetryable } from '../lib/api.ts'
@@ -122,9 +125,9 @@ function ArticleRow({ article }: { article: ArticleSummary }) {
   ].filter(Boolean)
 
   return (
-    <li className="relative flex items-start gap-3 px-4 py-3.5 hover:bg-bg-subtle">
-      <span className="mt-0.5 text-text-faint">
-        <Icon icon={FileText} size={18} />
+    <li className="group relative flex items-start gap-3 px-4 py-3.5 hover:bg-bg-subtle">
+      <span className={cx('mt-0.5', article.pinned ? 'text-accent' : 'text-text-faint')}>
+        <Icon icon={article.pinned ? Pin : FileText} size={18} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <Link
@@ -142,7 +145,23 @@ function ArticleRow({ article }: { article: ArticleSummary }) {
         <p className="text-[12px] text-text-faint tabular">{meta.join(' · ')}</p>
       </div>
       <ArticleStatus article={article} />
+      <PinButton article={article} />
     </li>
+  )
+}
+
+function PinButton({ article }: { article: ArticleSummary }) {
+  const { toggle, pending } = useToggleArticlePin(article)
+  return (
+    <IconButton
+      icon={article.pinned ? PinOff : Pin}
+      label={article.pinned ? '고정 해제' : '맨 위에 고정'}
+      size="sm"
+      disabled={pending}
+      onClick={toggle}
+      // Above the row's stretched link; on desktop it shows on hover, phones always show it
+      className="relative z-10 -my-1 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+    />
   )
 }
 

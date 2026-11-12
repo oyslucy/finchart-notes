@@ -33,7 +33,13 @@ from finchart_api.domain.uploads import (
     validate_pdf_upload,
 )
 from finchart_api.http.deps import CurrentAccount, ServicesDep
-from finchart_api.http.schemas import ArticleOut, ArticleSubmitOut, ArticleSummaryOut, QuotaOut
+from finchart_api.http.schemas import (
+    ArticleOut,
+    ArticlePatch,
+    ArticleSubmitOut,
+    ArticleSummaryOut,
+    QuotaOut,
+)
 from finchart_api.infra.sqlite import Database, FileStorage, sqlite_article_data
 
 router = APIRouter(tags=["articles"])
@@ -120,6 +126,14 @@ async def list_articles(data: ArticleDataDep, q: str = "") -> list[ArticleSummar
 @router.get("/articles/{article_id}")
 async def get_article(article_id: UUID, data: ArticleDataDep) -> ArticleOut:
     article = await data.articles.get(article_id)
+    if article is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "article not found")
+    return _out(article)
+
+
+@router.patch("/articles/{article_id}")
+async def update_article(article_id: UUID, body: ArticlePatch, data: ArticleDataDep) -> ArticleOut:
+    article = await data.articles.set_pinned(article_id, body.pinned)
     if article is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "article not found")
     return _out(article)

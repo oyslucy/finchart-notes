@@ -82,10 +82,14 @@ class ArticleSummaryOut(BaseModel):
     published: str | None
     summary: list[str]
     created_at: datetime
+    pinned: bool
 
     @classmethod
     def from_article(cls, article: Article) -> "ArticleSummaryOut":
-        return cls.model_validate(article.model_dump(include=set(cls.model_fields)))
+        fields = set(cls.model_fields) - {"pinned"}
+        return cls.model_validate(
+            {**article.model_dump(include=fields), "pinned": article.pinned_at is not None}
+        )
 
 
 class ArticleOut(ArticleSummaryOut):
@@ -94,10 +98,18 @@ class ArticleOut(ArticleSummaryOut):
 
     @classmethod
     def from_article(cls, article: Article) -> "ArticleOut":
-        fields = set(cls.model_fields) - {"pdf_url"}
+        summary = ArticleSummaryOut.from_article(article)
         return cls.model_validate(
-            {**article.model_dump(include=fields), "pdf_url": f"/api/articles/{article.id}/pdf"}
+            {
+                **summary.model_dump(),
+                "paragraphs": article.paragraphs,
+                "pdf_url": f"/api/articles/{article.id}/pdf",
+            }
         )
+
+
+class ArticlePatch(BaseModel):
+    pinned: bool
 
 
 class ArticleSubmitOut(BaseModel):

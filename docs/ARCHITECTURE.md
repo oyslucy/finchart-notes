@@ -126,7 +126,7 @@ telegram_updates     (update_id pk, received_at)   -- 웹훅 재전송 멱등성
 | PATCH / DELETE | `/api/cards/{id}` | 텍스트, 메모, 고정(`pinned`) 수정 / 삭제 |
 | POST | `/api/cards/{id}/reanalyze` | 저장된 크롭 이미지로 해설만 다시 받는다. 메모와 이미지는 그대로 두고, 하루 분석 횟수에 포함된다 |
 | POST / GET | `/api/articles` | 뉴스 PDF 업로드 → `202` 후 백그라운드 번역 / 기사 목록 (`q`로 검색, 본문 제외) |
-| GET / DELETE | `/api/articles/{id}` | 기사 (문단별 원문과 번역) / 삭제 (PDF 포함) |
+| GET / PATCH / DELETE | `/api/articles/{id}` | 기사 (문단별 원문과 번역) / 고정(`pinned`) / 삭제 (PDF 포함). 목록은 고정한 기사가 먼저 |
 | POST | `/api/articles/{id}/retry` | 실패한 번역을 다시 시도 (하루 번역 횟수에 포함) |
 | GET | `/api/articles/{id}/pdf` | 원본 PDF (소유자만, inline) |
 | GET | `/api/articles/quota` | 오늘 번역 횟수 (`/api/quota`와 같은 형태) |

@@ -54,6 +54,7 @@ export interface ArticleSummary {
   published: string | null
   summary: string[]
   created_at: string
+  pinned: boolean
 }
 
 export interface Paragraph {

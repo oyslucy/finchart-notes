@@ -98,6 +98,8 @@ export const api = {
     form.append('pdf', file)
     return request<ArticleSubmitResult>('/articles', { method: 'POST', body: form })
   },
+  pinArticle: (id: string, pinned: boolean) =>
+    request<Article>(`/articles/${id}`, { method: 'PATCH', body: JSON.stringify({ pinned }) }),
   retryArticle: (id: string) => request<Article>(`/articles/${id}/retry`, { method: 'POST' }),
   deleteArticle: (id: string) => request<undefined>(`/articles/${id}`, { method: 'DELETE' }),
   translationQuota: () => request<Quota>('/articles/quota'),

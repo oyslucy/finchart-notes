@@ -75,6 +75,7 @@ _MIGRATIONS: list[str] = [
          created_at  text not null
        )""",
     "create index translation_log_owner_idx on translation_log (owner_id, created_at)",
+    "alter table articles add column pinned_at text",
 ]
 SCHEMA_VERSION = 1 + len(_MIGRATIONS)
 # Pinned cards first (most recently pinned on top), then the user's order.
@@ -552,10 +553,10 @@ class SqliteArticles:
 
         def op(conn: sqlite3.Connection) -> list[Article]:
             rows = conn.execute(
-                """select * from articles where owner_id = ?
+                f"""select * from articles where owner_id = ?
                      and (? = '' or title like ? or title_ko like ? or source like ?
                           or filename like ? or summary like ? or paragraphs like ?)
-                   order by created_at desc limit ?""",
+                   order by {_RECENT_ORDER} limit ?""",
                 (self._owner, query, like, like, like, like, like, like, limit),
             )
             return [_article(r) for r in rows]
@@ -598,6 +599,12 @@ class SqliteArticles:
                 str(article_id),
                 self._owner,
             ),
+        )
+
+    async def set_pinned(self, article_id: UUID, pinned: bool) -> Article | None:
+        return await self._one(
+            "update articles set pinned_at = ? where id = ? and owner_id = ? returning *",
+            (_now() if pinned else None, str(article_id), self._owner),
         )
 
     async def fail(self, article_id: UUID, code: FailureCode) -> Article | None:

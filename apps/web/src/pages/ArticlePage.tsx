@@ -1,4 +1,14 @@
-import { ArrowLeft, ExternalLink, LoaderCircle, RotateCw, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowUpDown,
+  ExternalLink,
+  LoaderCircle,
+  Pin,
+  PinOff,
+  RotateCw,
+  Trash2,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
@@ -13,6 +23,7 @@ import {
   useArticle,
   useDeleteArticle,
   useRetryArticle,
+  useToggleArticlePin,
 } from '../features/news/queries.ts'
 import { ApiError, errorMessage } from '../lib/api.ts'
 import type { Article, Paragraph } from '../lib/types.ts'
@@ -26,14 +37,27 @@ const VIEWS: { value: View; label: string }[] = [
 ]
 
 const VIEW_KEY = 'finchart.news.view'
+const SWAP_KEY = 'finchart.news.swapped'
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function store(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Only remembered for this visit in private mode.
+  }
+}
 
 function readView(): View {
-  try {
-    const stored = localStorage.getItem(VIEW_KEY)
-    return VIEWS.some((v) => v.value === stored) ? (stored as View) : 'both'
-  } catch {
-    return 'both'
-  }
+  const stored = readStored(VIEW_KEY)
+  return VIEWS.some((v) => v.value === stored) ? (stored as View) : 'both'
 }
 
 export default function ArticlePage() {
@@ -66,6 +90,7 @@ export default function ArticlePage() {
               <ExternalLink size={14} aria-hidden="true" />
               원본 PDF
             </a>
+            <ArticlePinButton article={data} />
             <IconButton
               icon={Trash2}
               label="삭제"
@@ -127,59 +152,82 @@ function ArticleHeader({ article }: { article: Article }) {
 
 function ArticleBody({ article }: { article: Article }) {
   const [view, setView] = useState(readView)
+  const [swapped, setSwapped] = useState(() => readStored(SWAP_KEY) === '1')
   // An article already in Korean has nothing to set beside it.
   const bilingual = article.paragraphs.some((p) => p.translated.trim())
   const shown = bilingual ? view : 'original'
 
   const choose = (next: View) => {
     setView(next)
-    try {
-      localStorage.setItem(VIEW_KEY, next)
-    } catch {
-      // Only remembered for this visit in private mode.
-    }
+    store(VIEW_KEY, next)
   }
+  const swap = () => {
+    setSwapped(!swapped)
+    store(SWAP_KEY, swapped ? '0' : '1')
+  }
+  const columns = swapped ? ['한국어 번역', '원문'] : ['원문', '한국어 번역']
 
   return (
     <section className="flex flex-col gap-4">
       {bilingual && (
-        <div
-          role="radiogroup"
-          aria-label="보기 방식"
-          className="inline-flex self-start rounded-md border border-border bg-bg-subtle p-0.5"
-        >
-          {VIEWS.map((v) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="radiogroup"
+            aria-label="보기 방식"
+            className="inline-flex self-start rounded-md border border-border bg-bg-subtle p-0.5"
+          >
+            {VIEWS.map((v) => (
+              <button
+                key={v.value}
+                type="button"
+                role="radio"
+                aria-checked={shown === v.value}
+                onClick={() => {
+                  choose(v.value)
+                }}
+                className={cx(
+                  'h-7 rounded-[5px] px-3 text-[13px] transition-colors duration-150',
+                  shown === v.value
+                    ? 'bg-surface font-medium text-text shadow-xs'
+                    : 'text-text-muted hover:text-text',
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          {shown === 'both' && (
             <button
-              key={v.value}
               type="button"
-              role="radio"
-              aria-checked={shown === v.value}
-              onClick={() => {
-                choose(v.value)
-              }}
-              className={cx(
-                'h-7 rounded-[5px] px-3 text-[13px] transition-colors duration-150',
-                shown === v.value
-                  ? 'bg-surface font-medium text-text shadow-xs'
-                  : 'text-text-muted hover:text-text',
-              )}
+              aria-pressed={swapped}
+              onClick={swap}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-text-secondary hover:bg-bg-muted hover:text-text"
             >
-              {v.label}
+              <ArrowLeftRight size={14} className="hidden md:block" aria-hidden="true" />
+              <ArrowUpDown size={14} className="md:hidden" aria-hidden="true" />
+              <span className="hidden md:inline">좌우 바꾸기</span>
+              <span className="md:hidden">순서 바꾸기</span>
             </button>
-          ))}
+          )}
         </div>
       )}
 
       {shown === 'both' && (
         <div className="hidden grid-cols-2 gap-x-10 border-b border-border pb-2 text-[12px] font-medium text-text-faint md:grid">
-          <span>원문</span>
-          <span>한국어 번역</span>
+          <span>{columns[0]}</span>
+          <span>{columns[1]}</span>
         </div>
       )}
 
       <div className={cx('flex flex-col', shown === 'both' ? 'gap-1' : 'max-w-[720px] gap-4')}>
         {article.paragraphs.map((p, i) => (
-          <ParagraphRow key={i} paragraph={p} view={shown} lang={article.language} />
+          <ParagraphRow
+            key={i}
+            paragraph={p}
+            view={shown}
+            swapped={swapped}
+            lang={article.language}
+          />
         ))}
       </div>
     </section>
@@ -189,10 +237,12 @@ function ArticleBody({ article }: { article: Article }) {
 function ParagraphRow({
   paragraph,
   view,
+  swapped,
   lang,
 }: {
   paragraph: Paragraph
   view: View
+  swapped: boolean
   lang: string | null
 }) {
   const heading = paragraph.kind === 'heading'
@@ -216,8 +266,8 @@ function ParagraphRow({
 
   if (view === 'original') return original
   if (view === 'translated') return translated
-  // Side by side on wide screens, translation over a muted original on phones; a row
-  // highlight keeps the two halves of a paragraph together while reading across.
+  // Side by side on wide screens (original left), translation over a muted original on
+  // phones; swapping flips both. A row highlight keeps a paragraph's halves together.
   return (
     <div
       className={cx(
@@ -225,9 +275,23 @@ function ParagraphRow({
         heading && 'pt-5',
       )}
     >
-      <div className="order-2 md:order-1">{original}</div>
-      <div className="order-1 md:order-2">{translated}</div>
+      <div className={swapped ? 'order-1 md:order-2' : 'order-2 md:order-1'}>{original}</div>
+      <div className={swapped ? 'order-2 md:order-1' : 'order-1 md:order-2'}>{translated}</div>
     </div>
+  )
+}
+
+function ArticlePinButton({ article }: { article: Article }) {
+  const { toggle, pending } = useToggleArticlePin(article)
+  return (
+    <IconButton
+      icon={article.pinned ? PinOff : Pin}
+      label={article.pinned ? '고정 해제' : '맨 위에 고정'}
+      size="sm"
+      disabled={pending}
+      onClick={toggle}
+      className={article.pinned ? 'text-accent' : undefined}
+    />
   )
 }
 
